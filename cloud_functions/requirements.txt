@@ -1,0 +1,7 @@
+flask>=3.0.0
+requests>=2.31.0
+yt-dlp>=2024.4.9
+cloudinary>=1.39.0
+firebase-admin>=6.4.0
+pydub>=0.25.1
+audioop-lts; python_version >= "3.13"

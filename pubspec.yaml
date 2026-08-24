@@ -1,0 +1,113 @@
+name: spotify_clone
+description: A full-featured Spotify Clone built with Flutter and Firebase.
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^4.9.0
+  firebase_auth: ^6.5.1
+  cloud_firestore: ^6.4.1
+  firebase_storage: ^13.4.1
+
+  # ── Audio Playback (Cloudinary streaming) ──────────────────────────────────
+  just_audio: ^0.9.43
+  just_audio_background: ^0.0.1-beta.17
+  audio_session: ^0.1.18
+  rxdart: ^0.27.7
+
+  # State Management
+  provider: ^6.1.1
+
+  # Navigation
+  go_router: ^13.0.1
+
+  # Animations
+  flutter_animate: ^4.3.0
+  lottie: ^3.1.0
+
+  # Persistent Storage
+  shared_preferences: ^2.2.2
+
+  # Images
+  cached_network_image: ^3.3.1  # thumbnails
+  shimmer: ^3.0.0
+  palette_generator: ^0.3.3+3
+
+  # Fonts & Icons
+  google_fonts: ^6.2.1     # for Syne + IBM Plex Mono
+  cupertino_icons: ^1.0.6
+
+  # Smart Ingestion
+  http: ^1.2.1
+  file_picker: ^8.0.3
+  webview_flutter: ^4.13.1
+  audioplayers: ^6.0.0     # for preview playback
+  youtube_explode_dart: ^3.1.0
+  csv: ^8.0.0
+  path_provider: ^2.1.5
+  video_player: ^2.11.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
+    - assets/audio/
+    - assets/fonts/
+    - assets/cookies/
+
+  fonts:
+    # Standard body / artist / description text
+    - family: SpotifyMixUI
+      fonts:
+        - asset: assets/fonts/spotify_mix_ui_regular.otf
+          weight: 400
+        - asset: assets/fonts/spotify_mix_ui_bold.otf
+          weight: 700
+
+    # Subheaders, active tabs, UI buttons
+    - family: SpotifyMixUIBold
+      fonts:
+        - asset: assets/fonts/spotify_mix_ui_bold.otf
+          weight: 700
+
+    # Large screen titles / main headers
+    - family: SpotifyMixUITitleBold
+      fonts:
+        - asset: assets/fonts/spotify_mix_ui_title_bold.otf
+          weight: 700
+
+    # Album / playlist cover massive text
+    - family: SpotifyMixUITitleExtraBold
+      fonts:
+        - asset: assets/fonts/spotify_mix_ui_title_extrabold.otf
+          weight: 800
+
+    # Code, metrics, counters
+    - family: SpotifyMixMono
+      fonts:
+        - asset: assets/fonts/spotify_mix_mono_regular.otf
+          weight: 400
+
+    # Spotify icon glyphs (play, pause, shuffle, skip, etc.)
+    - family: Spoticon
+      fonts:
+        - asset: assets/fonts/spoticon.ttf
+
+dependency_overrides:
+  record_platform_interface: 1.6.0
+  record_linux: 1.3.1
+

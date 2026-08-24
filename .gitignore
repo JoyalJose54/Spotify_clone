@@ -1,0 +1,100 @@
+# Miscellaneous
+*.class
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+android/local.properties
+android/build/
+local.properties
+
+# ─── Secrets & Firebase Configs ────────────────────────────────────────────────
+# Real credentials — NEVER commit these
+firebase-key.json
+*firebase-key*.json
+!*firebase-key*.json.example
+google-services.json
+**/google-services.json
+!google-services.json.example
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+!**/GoogleService-Info.plist.example
+
+# ─── Environment Variables ─────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+!.env.example
+
+# ─── YouTube / Session Cookies ─────────────────────────────────────────────────
+assets/cookies/yt_cookies.txt
+cookies.txt
+**/cookies*.txt
+!*.example
+
+# ─── Python Virtual Environments & Cache ──────────────────────────────────────
+venv/
+**/venv/
+env/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# ─── Build Logs & Debug Artifacts ──────────────────────────────────────────────
+*.log
+firebase-debug.log
+firebase-debug.*.log
+.firebase/
+
+# ─── Archive Files ─────────────────────────────────────────────────────────────
+*.zip
+*.tar.gz
+
+# ─── Personal / Dev Scratch Folders ───────────────────────────────────────────
+joyal/
+
+# ─── Stray Root Files (not part of the Flutter project) ───────────────────────
+cast_abc_scrubber_*.png
+ic_spotify_icon_rgb_green.webp
+

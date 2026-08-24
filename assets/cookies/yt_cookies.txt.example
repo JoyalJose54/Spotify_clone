@@ -1,0 +1,7 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# Export your YouTube cookies using a browser extension like "Get cookies.txt LOCALLY"
+# and save the file as yt_cookies.txt in assets/cookies/
+#
+# Domain	Include subdomains	Path	Secure	Expiry	Name	Value
+#.youtube.com	TRUE	/	TRUE	0	EXAMPLE_COOKIE_NAME	EXAMPLE_COOKIE_VALUE
