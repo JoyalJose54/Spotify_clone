@@ -1,326 +1,355 @@
-# 🎵 Spotify Clone — Flutter + Firebase + Cloudinary
+<div align="center">
 
-A pixel-perfect Spotify clone with **real audio streaming** from Cloudinary,
-**live Firestore data**, and full just_audio playback.
+<img src="assets/images/logo.webp" alt="Spotify Clone Logo" width="120" />
 
-> **⭐ Portfolio Project** — Built with Flutter (Android/iOS), Firebase (Auth + Firestore), Cloudinary (audio CDN), and a Python Flask ingestion backend.
+# 🎵 Spotify Clone
+
+### A pixel-perfect music streaming app built with Flutter & Firebase
+
+<br/>
+
+[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
+[![Cloudinary](https://img.shields.io/badge/Cloudinary-CDN-3448C5?style=for-the-badge&logo=cloudinary&logoColor=white)](https://cloudinary.com)
+[![Python](https://img.shields.io/badge/Python-Flask-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://flask.palletsprojects.com)
+
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-lightgrey?style=for-the-badge&logo=android&logoColor=white)](https://flutter.dev)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen?style=for-the-badge)](https://github.com/JoyalJose54/Spotify_clone/pulls)
+
+<br/>
+
+> Real audio streaming · Live Firestore database · AI-powered song identification
+
+<br/>
+
+[Features](#-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Tech Stack](#-tech-stack) • [Screenshots](#-project-structure)
+
+</div>
 
 ---
 
-## ⚡ Quick Start — Configuration
+## ✨ Features
 
-> **Credentials are not included in this repo.** Copy the example files below and fill in your own keys before running.
+<table>
+<tr>
+<td width="50%">
 
-### 1. Firebase (Android)
-```bash
-cp google-services.json.example android/app/google-services.json
-# Then fill in your real Firebase project values
+### 🎧 Music Playback
+- Full audio streaming via **Cloudinary CDN**
+- Background playback with lock screen controls
+- Seek, skip, shuffle & repeat
+- Real-time progress bar with buffering indicator
+- Mini player that persists across all screens
+
+</td>
+<td width="50%">
+
+### 🔥 Live Data
+- **Real-time Firestore** streams — no refresh needed
+- Add a song via Python → app updates instantly
+- Liked songs sync across devices
+- Recently played history per user
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🤖 Smart Ingestion Backend
+- **yt-dlp** downloads audio from YouTube
+- **Shazam API** fingerprints & corrects metadata
+- **Smart deduplication** — fuzzy title matching + alias keys
+- Auto-uploads to Cloudinary (audio + square cover art)
+
+</td>
+<td width="50%">
+
+### 🎨 Polished UI
+- Pixel-perfect Spotify-inspired design
+- Dynamic **color palette** extracted from album art
+- Animated splash screen with floating album arts
+- Custom Spotify fonts & icon set
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Flutter App                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐   │
+│  │  HomeScreen │  │ SearchScreen│  │  NowPlayingScreen    │   │
+│  │  (playlists)│  │ (YT + local)│  │  (just_audio stream) │   │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬───────────┘   │
+│         │                │                     │               │
+│  ┌──────▼────────────────▼─────────────────────▼───────────┐  │
+│  │              Provider Layer (State Management)           │  │
+│  │   PlayerProvider · AuthProvider · NavigationProvider    │  │
+│  └──────────────────────────┬──────────────────────────────┘  │
+└─────────────────────────────│───────────────────────────────────┘
+                              │
+           ┌──────────────────┼──────────────────┐
+           │                  │                  │
+    ┌──────▼──────┐   ┌───────▼──────┐   ┌──────▼──────┐
+    │  Firestore  │   │  Cloudinary  │   │  Firebase   │
+    │  (metadata) │   │  (audio CDN) │   │    Auth     │
+    └─────────────┘   └──────────────┘   └─────────────┘
+                              │
+           ┌──────────────────┘
+    ┌──────▼──────────────────────────────────────────┐
+    │           Python Flask Backend                  │
+    │  yt-dlp → Shazam ID → Cloudinary → Firestore   │
+    └─────────────────────────────────────────────────┘
 ```
 
-### 2. Firebase Admin SDK (Python backend)
+---
+
+## ⚡ Quick Start
+
+> **Credentials are not included in this repo.** Copy the example files below and fill in your own keys.
+
+### Prerequisites
+
+```bash
+flutter --version   # Flutter 3.x+
+python3 --version   # Python 3.10+
+```
+
+### 1️⃣ Clone the repository
+
+```bash
+git clone https://github.com/JoyalJose54/Spotify_clone.git
+cd Spotify_clone
+flutter pub get
+```
+
+### 2️⃣ Configure Firebase (Android)
+
+```bash
+# Copy the example and fill in your Firebase project values
+cp google-services.json.example android/app/google-services.json
+```
+
+<details>
+<summary>📋 How to get google-services.json</summary>
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com)
+2. Create a project → Add Android app (package: `com.example.spotify_clone`)
+3. Download `google-services.json` and place it in `android/app/`
+4. Enable **Authentication** (Email/Password), **Firestore**, and **Storage**
+
+</details>
+
+### 3️⃣ Configure Firebase Admin SDK (Python backend)
+
 ```bash
 cp database/firebase-key.json.example database/firebase-key.json
 # Paste your Firebase service account JSON content
 ```
 
-### 3. Python backend environment
+### 4️⃣ Configure the Python backend
+
 ```bash
 cp cloud_functions/.env.example cloud_functions/.env
-# Fill in: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, SHAZAM_KEYS
 ```
 
-### 4. YouTube cookies (optional, for age-restricted content)
-```bash
-cp assets/cookies/yt_cookies.txt.example assets/cookies/yt_cookies.txt
-# Export cookies from your browser using a cookies.txt extension
+Then edit `cloud_functions/.env`:
+
+```env
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+SHAZAM_KEYS=your_rapidapi_shazam_key
+FIREBASE_CREDENTIALS_JSON=../database/firebase-key.json
 ```
 
-### 5. Install & run
-```bash
-flutter pub get
-flutter run
-```
+### 5️⃣ Run the app
 
-### 6. Run the Python ingestion backend
 ```bash
+# Terminal 1 — Start the ingestion backend
 cd cloud_functions
 pip install -r requirements.txt
 python main.py
-```
 
----
-
-## Architecture at a glance
-
-```
-Cloudinary CDN          Firestore                Flutter
-─────────────           ─────────                ──────────────────────────────
-audio.m4a  ──secure_url──▶ tracks/{id}  ──stream──▶ PlayerProvider (just_audio)
-cover.jpg  ──imageUrl────▶             ──stream──▶ LibraryScreen (StreamBuilder)
-                          playlists/{id}──stream──▶ HomeScreen  (StreamBuilder)
-                          users/{uid}   ──stream──▶ LikedSongs  (StreamBuilder)
-```
-
-### How it works
-1. **Registry (Firestore `tracks`)** – each document has `title`, `artist`,
-   `secure_url` (Cloudinary), `imageUrl`, etc.  
-2. **Streaming (Cloudinary → just_audio)** – the app passes `secure_url`
-   directly to `AudioPlayer.setUrl()`. Cloudinary streams in chunks; nothing
-   is downloaded to the device.  
-3. **Live UI (StreamBuilder)** – every screen subscribes to Firestore snapshots.
-   Add a song via your Python script → Library screen updates instantly.  
-4. **Playlists** – a `playlists` document stores `trackIds: [...]`. The app
-   resolves those IDs against the loaded tracks map. No files are copied.
-
----
-
-## 1 · Firebase setup
-
-### 1-a Create project
-1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. **Add project** → name it `spotify-clone`
-3. Enable **Google Analytics** (optional)
-
-### 1-b Register apps
-| Platform | Identifier |
-|----------|-----------|
-| Android  | `com.example.spotify_clone` |
-| iOS      | `com.example.spotifyClone`  |
-
-Download:
-- `google-services.json` → `android/app/`
-- `GoogleService-Info.plist` → `ios/Runner/`
-
-Then run:
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure
-```
-This generates `lib/firebase_options.dart` automatically.
-
-### 1-c Enable services
-In Firebase Console:
-- **Authentication** → Sign-in method → **Email/Password** → Enable
-- **Firestore Database** → Create in **production mode**
-- **Storage** → Get started
-
-### 1-d Firestore security rules
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Public read for music catalog
-    match /tracks/{doc}    { allow read: if true; allow write: if false; }
-    match /albums/{doc}    { allow read: if true; allow write: if false; }
-    match /artists/{doc}   { allow read: if true; allow write: if false; }
-    match /playlists/{doc} { allow read: if true;
-                             allow write: if request.auth != null; }
-
-    // Per-user private data
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
-}
-```
-
----
-
-## 2 · Cloudinary setup
-
-1. Sign up at [cloudinary.com](https://cloudinary.com) (free tier = 25 GB)
-2. Create an **Upload Preset** (unsigned, for your Python uploader)
-3. Upload audio files → copy the `secure_url`
-4. Upload cover images → copy the `secure_url`
-
----
-
-## 3 · Firestore `tracks` collection schema
-
-Each document in `/tracks/{auto-id}`:
-
-```json
-{
-  "title"      : "Love Me Do",
-  "artist"     : "The Beatles",
-  "album"      : "Please Please Me",
-  "albumId"    : "alb_please_please_me",
-  "artistId"   : "artist_beatles",
-  "secure_url" : "https://res.cloudinary.com/YOUR_CLOUD/video/upload/v1234/songs/love-me-do.m4a",
-  "imageUrl"   : "https://res.cloudinary.com/YOUR_CLOUD/image/upload/v1234/covers/please-please-me.jpg",
-  "duration_ms": 142000,
-  "trackNumber": 1,
-  "isExplicit" : false
-}
-```
-
-> **Field aliases the app accepts** (so any Python uploader works):
-> - Audio: `secure_url` · `audioUrl` · `audio_url` · `url`
-> - Image: `imageUrl` · `thumbnail_url` · `thumbnail` · `coverUrl`
-> - Duration: `duration_ms` (int ms) · `durationMs` · `duration` (float seconds)
-
----
-
-## 4 · Firestore `playlists` collection schema
-
-```json
-{
-  "name"        : "Chill Vibes",
-  "description" : "Easy listening for any time",
-  "imageUrl"    : "https://res.cloudinary.com/.../covers/chill.jpg",
-  "owner"       : "Spotify",
-  "trackIds"    : ["track_id_1", "track_id_2", "track_id_3"],
-  "likes"       : 12400,
-  "isSpotifyOwned": true
-}
-```
-
-No audio files are touched. The app resolves `trackIds` against the in-memory
-`tracks` map at runtime.
-
----
-
-## 5 · Install & run
-
-```bash
-# 1. Clone & install
-git clone <your-repo>
-cd spotify_clone
-flutter pub get
-
-# 2. Add Firebase config files (see section 1-b above)
-# android/app/google-services.json
-# ios/Runner/GoogleService-Info.plist
-
-# 3. Run
+# Terminal 2 — Run the Flutter app
 flutter run
 ```
 
-### Android minimum SDK
-The `android/app/build.gradle` already sets `minSdk = 21` (Android 5.0) which
-is required by `just_audio`.
+---
 
-### iOS background audio
-`ios/Runner/Info.plist` already contains the `UIBackgroundModes → audio` key
-so Cloudinary streaming continues when the app is backgrounded.
+## 🛠 Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Mobile App** | Flutter 3 + Dart | Cross-platform UI (Android & iOS) |
+| **State Management** | Provider | PlayerProvider, AuthProvider |
+| **Audio** | just_audio + audio_session | Streaming, background playback, headset control |
+| **Database** | Firebase Firestore | Live music catalog & user data |
+| **Auth** | Firebase Authentication | Email/password sign-up & login |
+| **Storage** | Cloudinary CDN | Audio files (M4A) & cover art (JPG) |
+| **Backend** | Python + Flask | Ingestion API server |
+| **Downloader** | yt-dlp | YouTube audio download |
+| **Fingerprinting** | Shazam API (RapidAPI) | Track identification & metadata correction |
+| **Image** | palette_generator | Dynamic background colour from album art |
 
 ---
 
-## 6 · Project structure
+## 🗂 Firestore Schema
+
+<details>
+<summary>📀 <strong>tracks</strong> collection</summary>
+
+```json
+{
+  "title":          "Blinding Lights",
+  "artist":         "The Weeknd",
+  "album":          "After Hours",
+  "secure_url":     "https://res.cloudinary.com/.../audio/the-weeknd/blinding-lights.m4a",
+  "imageUrl":       "https://res.cloudinary.com/.../covers/after-hours.jpg",
+  "duration_ms":    200040,
+  "trackNumber":    1,
+  "isExplicit":     false,
+  "title_lc":       "blinding lights",
+  "artist_lc":      "the weeknd",
+  "alias_keys":     ["blinding lights||the weeknd"],
+  "video_id":       "4NRXx6U8ABQ",
+  "addedAt":        "2024-01-15T10:30:00Z"
+}
+```
+
+</details>
+
+<details>
+<summary>📋 <strong>playlists</strong> collection</summary>
+
+```json
+{
+  "name":           "Chill Vibes",
+  "description":    "Easy listening for any time",
+  "imageUrl":       "https://res.cloudinary.com/.../covers/chill.jpg",
+  "owner":          "JoyalJose",
+  "trackIds":       ["trackId1", "trackId2", "trackId3"],
+  "likes":          1240,
+  "isSpotifyOwned": false
+}
+```
+
+</details>
+
+<details>
+<summary>👤 <strong>users</strong> collection</summary>
+
+```json
+{
+  "name":             "Joyal Jose",
+  "email":            "user@example.com",
+  "createdAt":        "2024-01-01T00:00:00Z",
+  "likedSongs":       ["trackId1", "trackId2"],
+  "followedArtists":  ["artistId1"]
+}
+```
+
+</details>
+
+---
+
+## 📁 Project Structure
 
 ```
-lib/
-├── main.dart                         ← Firebase init + AudioSession + providers
-├── theme/app_theme.dart              ← Spotify colour tokens + typography
-├── models/models.dart                ← Song · Playlist · Artist · LibraryItem
-│                                        Song.fromFirestore() handles all field aliases
-├── providers/app_provider.dart       ← PlayerProvider (just_audio wrapper)
-│                                        AuthProvider · NavigationProvider
-├── services/firebase_service.dart    ← All Firestore stream/fetch/write methods
-└── screens/
-    ├── splash_screen.dart            ← Floating animated album arts
-    ├── main_screen.dart              ← Shell + MiniPlayer (real just_audio streams)
-    ├── auth/auth_screens.dart        ← Email → Password → Name → Choose Artists
-    ├── home/home_screen.dart         ← StreamBuilder: recently played · playlists
-    ├── search/search_screen.dart     ← Live Firestore search · genre grid
-    ├── library/
-    │   └── library_screen.dart       ← StreamBuilder on `tracks` collection
-    │                                    AllTracksPlaylistScreen (auto-updates)
-    ├── album/album_screen.dart       ← Dynamic palette · Firestore track list
-    └── player/now_playing_screen.dart← just_audio streams · seek · skip · like
+Spotify_clone/
+├── lib/
+│   ├── main.dart                          # App entry, Firebase init
+│   ├── theme/
+│   │   ├── app_theme.dart                 # Spotify colour tokens & typography
+│   │   └── spotify_fonts.dart             # Custom font definitions
+│   ├── models/
+│   │   └── models.dart                    # Song · Playlist · Artist · LibraryItem
+│   ├── providers/
+│   │   ├── app_provider.dart              # PlayerProvider · AuthProvider
+│   │   └── ingestion_provider.dart        # Ingestion state management
+│   ├── services/
+│   │   ├── firebase_service.dart          # All Firestore queries & writes
+│   │   └── ingestion_service.dart         # Backend API client
+│   ├── screens/
+│   │   ├── splash_screen.dart             # Animated splash with floating art
+│   │   ├── main_screen.dart               # Shell + persistent MiniPlayer
+│   │   ├── home/home_screen.dart          # Recently played · Playlists
+│   │   ├── search/search_screen.dart      # Firestore search + YouTube
+│   │   ├── library/library_screen.dart    # Full track library (live stream)
+│   │   ├── player/now_playing_screen.dart # Full-screen player
+│   │   └── auth/auth_screens.dart         # Login · Signup flow
+│   └── widgets/
+│       ├── mini_player.dart               # Persistent bottom player
+│       ├── track_list_tile.dart           # Reusable track row
+│       └── playlist_collage.dart          # 2×2 image collage widget
+│
+├── cloud_functions/
+│   ├── main.py                            # Flask ingestion server
+│   ├── requirements.txt                   # Python dependencies
+│   └── .env.example                       # → copy to .env and fill in
+│
+├── database/
+│   ├── firebase-key.json.example          # → copy to firebase-key.json
+│   ├── download_playlist.py               # Bulk playlist downloader
+│   └── sync_to_cloud.py                   # Local → Firestore sync tool
+│
+└── assets/
+    ├── animations/splash.json             # Lottie splash animation
+    ├── cookies/yt_cookies.txt.example     # → copy for YT cookie auth
+    ├── fonts/                             # Spotify Mix UI font family
+    └── images/                            # App icons & player controls
 ```
 
 ---
 
-## 7 · Key data flows
+## 🔒 Security
 
-### Play a song
-```
-User taps track
-  → PlayerProvider.playSong(song)
-  → AudioPlayer.setUrl(song.streamUrl)   ← Cloudinary secure_url
-  → Cloudinary streams chunks to device
-  → NowPlayingScreen subscribes to positionDataStream
-  → Slider updates in real time
-```
+All credentials are **excluded from this repository** via `.gitignore`. The following files are required locally but never committed:
 
-### Library auto-update
-```
-Python script adds doc to `tracks` collection
-  → Firestore snapshot fires
-  → LibraryScreen StreamBuilder rebuilds
-  → User sees new song immediately (no refresh)
-```
-
-### Liked songs
-```
-User taps ♥ in NowPlayingScreen
-  → FirebaseService.likeSong(trackId)
-  → Writes to users/{uid}.likedSongs[]
-  → streamLikedSongs() snapshot fires
-  → Liked Songs row updates count
-```
+| File | Purpose | Template |
+|------|---------|----------|
+| `android/app/google-services.json` | Firebase Android config | `google-services.json.example` |
+| `database/firebase-key.json` | Firebase Admin SDK key | `database/firebase-key.json.example` |
+| `cloud_functions/.env` | Backend API credentials | `cloud_functions/.env.example` |
+| `assets/cookies/yt_cookies.txt` | YouTube session cookies | `assets/cookies/yt_cookies.txt.example` |
 
 ---
 
-## 8 · Adding songs (Python script integration)
-
-Your upload script should write to Firestore like this:
-
-```python
-import cloudinary.uploader
-from google.cloud import firestore
-
-# 1. Upload to Cloudinary
-result = cloudinary.uploader.upload(
-    "path/to/song.m4a",
-    resource_type="video",
-    folder="songs",
-)
-
-# 2. Write to Firestore `tracks`
-db = firestore.Client()
-db.collection("tracks").add({
-    "title"      : "Song Title",
-    "artist"     : "Artist Name",
-    "album"      : "Album Name",
-    "secure_url" : result["secure_url"],   # ← Cloudinary URL
-    "imageUrl"   : cover_url,
-    "duration_ms": int(result.get("duration", 0) * 1000),
-    "trackNumber": 1,
-    "isExplicit" : False,
-})
-# Flutter library screen updates automatically ✅
-```
-
----
-
-## 9 · Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `just_audio` | Cloudinary URL → audio streaming |
-| `audio_session` | Handle phone calls, BT headsets, interruptions |
-| `rxdart` | `combineLatest3` for position + buffer + duration stream |
-| `firebase_core` | Firebase initialisation |
-| `firebase_auth` | Email/password sign-up & login |
-| `cloud_firestore` | Live `tracks` + `playlists` + `users` streams |
-| `firebase_storage` | (Optional) direct file access |
-| `palette_generator` | Dynamic background colour from album art |
-| `flutter_animate` | Declarative entry/stagger animations |
-| `cached_network_image` | Efficient Cloudinary image loading |
-| `google_fonts` | Nunito typeface |
-| `provider` | State management |
-
----
-
-## 10 · Troubleshooting
+## 🛠 Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| `MissingPluginException` on audio | Run `flutter clean && flutter pub get` |
-| Songs not loading | Check `secure_url` field in Firestore doc; must be HTTPS |
-| Library screen empty | Verify Firestore rules allow `read: if true` on `tracks` |
+| `MissingPluginException` on audio | `flutter clean && flutter pub get` |
+| Library screen empty | Check Firestore rules allow `read: if true` on `tracks` |
 | Firebase `no-app` crash | Ensure `google-services.json` is in `android/app/` |
-| iOS audio stops in background | `Info.plist` already has `UIBackgroundModes: audio` |
-| Cloudinary 401 error | Set delivery type to **public** in Cloudinary asset settings |
+| Backend connection refused | Start `python main.py` in `cloud_functions/` |
+| Cloudinary 401 error | Set delivery type to **public** in Cloudinary settings |
+| Songs not streaming | Verify `secure_url` field starts with `https://` in Firestore |
+| iOS audio stops in background | `Info.plist` already has `UIBackgroundModes: audio` ✅ |
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues and feature requests are welcome!
+
+1. **Fork** the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'feat: add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open a **Pull Request**
+
+---
+
+<div align="center">
+
+Made with ❤️ by [Joyal Jose](https://github.com/JoyalJose54)
+
+⭐ **Star this repo if you found it useful!**
+
+</div>
