@@ -348,7 +348,7 @@ Contributions, issues and feature requests are welcome!
 
 <div align="center">
 
-Made with ❤️ by [Joyal Jose](https://github.com/JoyalJose54)
+Made by [Joyal Jose](https://github.com/JoyalJose54)
 
 ⭐ **Star this repo if you found it useful!**
 
