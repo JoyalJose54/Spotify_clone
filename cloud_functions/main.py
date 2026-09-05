@@ -114,27 +114,36 @@ YT_MUSIC_SEARCH = "https://music.youtube.com/search?q="
 _COOKIES_TMP_FILE = None
 
 def _get_cookie_file_path() -> str | None:
-    """Check for local cookies.txt or decode YOUTUBE_COOKIES_BASE64 from environment."""
+    """Check for local cookies.txt or decode YOUTUBE_COOKIES / YOUTUBE_COOKIES_BASE64 from environment."""
     global _COOKIES_TMP_FILE
     if _COOKIES_TMP_FILE and os.path.exists(_COOKIES_TMP_FILE):
         return _COOKIES_TMP_FILE
 
-    # 1. Check local cookies.txt in current directory or cloud_functions/
-    candidates = [
-        "cookies.txt",
-        os.path.join(os.path.dirname(__file__), "cookies.txt"),
-        os.path.join(os.path.dirname(__file__), "../cookies.txt"),
+    # 1. Check local cookies files in current directory or cloud_functions/
+    base_dirs = [
+        os.path.dirname(__file__),
+        os.path.join(os.path.dirname(__file__), ".."),
+        os.getcwd(),
     ]
-    for c in candidates:
-        if os.path.exists(c) and os.path.getsize(c) > 10:
-            log.info("Found local cookies file: %s", c)
-            return c
+    for bd in base_dirs:
+        if os.path.isdir(bd):
+            for fname in ["cookies.txt", "www.youtube.com_cookies.txt", "youtube_cookies.txt"]:
+                full_p = os.path.join(bd, fname)
+                if os.path.exists(full_p) and os.path.getsize(full_p) > 10:
+                    log.info("Found local cookies file: %s", full_p)
+                    return full_p
+            for p in Path(bd).glob("*cookie*.txt"):
+                if p.is_file() and p.stat().st_size > 10:
+                    log.info("Found globbed cookies file: %s", str(p))
+                    return str(p)
 
     # 2. Check base64 encoded cookies environment variable
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
     if cookies_b64:
         try:
-            decoded = base64.b64decode(cookies_b64).decode("utf-8")
+            decoded = base64.b64decode(cookies_b64).decode("utf-8", errors="ignore")
+            if not decoded.startswith("# Netscape HTTP Cookie File"):
+                decoded = "# Netscape HTTP Cookie File\n" + decoded
             tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
             tf.write(decoded)
             tf.flush()
@@ -145,10 +154,12 @@ def _get_cookie_file_path() -> str | None:
         except Exception as e:
             log.warning("Failed to decode YOUTUBE_COOKIES_BASE64: %s", e)
 
-    # 3. Check plain text cookies environment variable
+    # 3. Check plain text cookies environment variable (auto-ensure Netscape header)
     cookies_raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
-    if cookies_raw and "# Netscape HTTP Cookie File" in cookies_raw:
+    if cookies_raw and len(cookies_raw) > 20:
         try:
+            if not cookies_raw.startswith("# Netscape HTTP Cookie File"):
+                cookies_raw = "# Netscape HTTP Cookie File\n" + cookies_raw
             tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
             tf.write(cookies_raw)
             tf.flush()
@@ -165,16 +176,29 @@ def _get_cookie_file_path() -> str | None:
 def _get_ydl_opts(base_opts: dict) -> dict:
     """
     Return hardened yt-dlp options configured to prevent datacenter IP blocks.
-    Uses android and web client emulation to bypass 'Sign in to confirm you're not a bot'.
+    Uses authenticated cookies with JS challenge solving, or VisionOS/Android fallback.
     """
     opts = base_opts.copy()
 
-    # Emulate VisionOS & Android player clients to completely avoid Web bot detection
-    opts.setdefault("extractor_args", {
-        "youtube": {
-            "player_client": ["visionos", "android_vr", "android"],
-        }
-    })
+    # Enable automated EJS challenge solver
+    opts.setdefault("remote_components", ["ejs:github"])
+
+    # Configure JS runtime if node is installed
+    if shutil.which("node"):
+        opts.setdefault("js_runtimes", {"node": {}})
+
+    # Check for authentication cookies
+    cookie_file = _get_cookie_file_path()
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+        log.info("yt-dlp operating in Authenticated Cookie mode (%s)", cookie_file)
+    else:
+        # Fallback without cookies: Emulate VisionOS & Android player clients
+        opts.setdefault("extractor_args", {
+            "youtube": {
+                "player_client": ["visionos", "android_vr", "android"],
+            }
+        })
 
     # Network timeouts and retries
     opts.setdefault("socket_timeout", 30)
@@ -184,11 +208,6 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     proxy = os.environ.get("YT_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
     if proxy:
         opts["proxy"] = proxy
-
-    # Cookies if provided
-    cookie_file = _get_cookie_file_path()
-    if cookie_file:
-        opts["cookiefile"] = cookie_file
 
     return opts
 
@@ -664,7 +683,7 @@ def ping():
     cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
-        "version": "1.2.5",
+        "version": "1.2.6",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
