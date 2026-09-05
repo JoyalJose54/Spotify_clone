@@ -691,16 +691,19 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
 @app.route("/ping", methods=["GET"])
 def ping():
     cookie_present = bool(_get_cookie_file_path())
-    node_bin = shutil.which("node") or shutil.which("nodejs") or ("/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else None)
+    found_nodes = [p for p in ["/usr/bin/node", "/usr/bin/nodejs", "/usr/local/bin/node", "/bin/node", "/usr/bin/qjs"] if os.path.exists(p)]
+    node_bin = (found_nodes[0] if found_nodes else None) or shutil.which("node") or shutil.which("nodejs")
     return jsonify({
         "status": "online",
-        "version": "1.2.8",
+        "version": "1.2.9",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
         "youtube_cookies_loaded": cookie_present,
         "node_available": bool(node_bin),
-        "node_path": node_bin
+        "node_path": node_bin,
+        "found_nodes": found_nodes,
+        "path_env": os.environ.get("PATH", "")
     }), 200
 
 
