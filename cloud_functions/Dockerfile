@@ -27,10 +27,13 @@ ENV PORT=7860
 ENV SPOTIFLAC_REGISTRIES=https://raw.githubusercontent.com/zarzet/SpotiFLAC-Extension/main/registry.json
 EXPOSE 7860 8080
 
-# Configure non-root user for Hugging Face Spaces compatibility
-RUN useradd -m -u 1000 user && chown -R user:user /app
+# Configure non-root user and directories for SpotiFLAC extensions
+RUN useradd -m -u 1000 user && \
+    mkdir -p /home/user/.spotiflac /home/user/.cache /tmp/.cache && \
+    chown -R user:user /app /home/user /tmp/.cache
 USER user
 ENV HOME=/home/user \
+    XDG_CACHE_HOME=/home/user/.cache \
     PATH=/home/user/.local/bin:$PATH
 
 # Run with Gunicorn production WSGI server (threads=2 and max-requests=25 to strictly bound RAM < 200MB)

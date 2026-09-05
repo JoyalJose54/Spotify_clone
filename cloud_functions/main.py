@@ -478,38 +478,60 @@ def _resolve_spotify_track(title: str, artist: str = "", spotify_url: str = None
 # ─────────────────────────────────────────────────────────────────────────────
 #  SpotiFLAC Lossless Audio Downloader (Tier 1)
 # ─────────────────────────────────────────────────────────────────────────────
+_LAST_SPOTIFLAC_DIAG = {}
+
 def _download_via_spotiflac(spotify_url: str, output_dir: str) -> tuple[str | None, int]:
     """
     Download studio lossless audio from Tidal/Qobuz using SpotiFLAC and transcode to M4A.
     Returns (transcoded_m4a_path, duration_ms) or (None, 0).
     """
+    global _LAST_SPOTIFLAC_DIAG
+    _LAST_SPOTIFLAC_DIAG = {
+        "time": time.time(),
+        "spotify_url": spotify_url,
+        "spotiflac_available": SPOTIFLAC_AVAILABLE,
+        "output_dir": output_dir,
+        "status": "started",
+    }
+
     if not SPOTIFLAC_AVAILABLE:
+        _LAST_SPOTIFLAC_DIAG["status"] = "spotiflac_not_available"
         return None, 0
 
     try:
         log.info("Running SpotiFLAC lossless engine on %s...", spotify_url)
-        SpotiFLAC(spotify_url, output_dir=output_dir)
+        SpotiFLAC(spotify_url, output_dir=output_dir, log_level=logging.DEBUG)
+
+        all_files = [str(p) for p in Path(output_dir).rglob("*") if p.is_file()]
+        _LAST_SPOTIFLAC_DIAG["all_files_in_tmpdir"] = all_files
 
         downloaded = []
         for ext in ("*.flac", "*.wav", "*.m4a", "*.mp3", "*.ogg", "*.opus"):
-            downloaded.extend(Path(output_dir).glob(ext))
+            downloaded.extend(Path(output_dir).rglob(ext))
 
         if not downloaded:
-            log.info("SpotiFLAC found no lossless stream in Tidal/Qobuz catalog.")
+            log.info("SpotiFLAC found no lossless stream in Tidal/Qobuz catalog. Files found: %s", all_files)
+            _LAST_SPOTIFLAC_DIAG["status"] = "no_audio_files_found"
             return None, 0
 
         source_file = str(downloaded[0])
         log.info("SpotiFLAC downloaded source: %s (%d KB)", source_file, os.path.getsize(source_file) // 1024)
+        _LAST_SPOTIFLAC_DIAG["source_file"] = source_file
+        _LAST_SPOTIFLAC_DIAG["source_size"] = os.path.getsize(source_file)
 
         transcoded_m4a = os.path.join(output_dir, "transcoded_audio.m4a")
         if _transcode_audio_to_m4a(source_file, transcoded_m4a, bitrate="256k"):
             duration_ms = _get_audio_duration_ms(transcoded_m4a)
+            _LAST_SPOTIFLAC_DIAG["status"] = "success"
             return transcoded_m4a, duration_ms
         elif source_file.endswith(".m4a"):
+            _LAST_SPOTIFLAC_DIAG["status"] = "success_direct_m4a"
             return source_file, _get_audio_duration_ms(source_file)
 
     except Exception as e:
         log.warning("SpotiFLAC download encountered exception: %s", e)
+        _LAST_SPOTIFLAC_DIAG["status"] = "exception"
+        _LAST_SPOTIFLAC_DIAG["error"] = str(e)
 
     return None, 0
 
@@ -857,7 +879,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.9",
+        "version": "1.4.0",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
@@ -873,6 +895,7 @@ def ping():
         "js_runtime_available": bool(js_bin),
         "js_runtime_path": js_bin,
         "dir_files": dir_files,
+        "last_spotiflac_diag": _LAST_SPOTIFLAC_DIAG,
     }), 200
 
 
@@ -990,82 +1013,7 @@ def ingest():
     )
 
     try:
-        # ─────────────────────────────────────────────────────────────────────
-        #  PATH 1: Direct Video ID provided (from Flutter YouTube search)
-        # ─────────────────────────────────────────────────────────────────────
-        if video_id:
-            # Deduplication
-            if not bypass_dedup:
-                existing_id = _find_existing_track(title, artist, video_id=video_id)
-                if existing_id:
-                    log.info("Dedup hit for video_id %s -> track %s", video_id, existing_id)
-                    if playlist_id:
-                        _link_to_playlist(playlist_id, existing_id)
-                    return jsonify({
-                        "status": "duplicate",
-                        "track_id": existing_id,
-                        "message": f"Song already exists (id={existing_id}). Linked to playlist."
-                    })
-
-            yt_url = f"https://www.youtube.com/watch?v={video_id}"
-            yt_thumb = thumbnail_url or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                m4a_path, duration_ms, err_msg = _download_via_youtube(yt_url, tmpdir)
-                if not m4a_path or not os.path.exists(m4a_path):
-                    details = f": {err_msg}" if err_msg else ""
-                    return jsonify({"error": f"Could not download YouTube audio for video_id: {video_id}{details}"}), 500
-
-                clean_t = title or "YouTube Track"
-                clean_a = artist or "Unknown Artist"
-
-                audio_pid = _sanitize_public_id(f"audio/{clean_a}/{clean_t}")
-                log.info("Uploading audio to Cloudinary: %s", audio_pid)
-                audio_res = cloudinary.uploader.upload(
-                    m4a_path,
-                    resource_type="video",
-                    public_id=audio_pid,
-                    overwrite=True,
-                    format="m4a",
-                )
-                audio_url = audio_res["secure_url"]
-
-                cover_url, cover_pid = _upload_square_cover(yt_thumb, clean_t, clean_a)
-
-                meta = {
-                    "title": clean_t,
-                    "artist": clean_a,
-                    "album": "",
-                    "duration_ms": duration_ms,
-                    "video_id": video_id,
-                }
-                track_id = _create_firestore_track(
-                    meta=meta,
-                    secure_url=audio_url,
-                    audio_public_id=audio_pid,
-                    cover_url=cover_url,
-                    cover_public_id=cover_pid,
-                    source="youtube",
-                    quality="256k_aac_youtube",
-                    video_id=video_id
-                )
-
-                if playlist_id:
-                    _link_to_playlist(playlist_id, track_id)
-
-                return jsonify({
-                    "status": "created",
-                    "track_id": track_id,
-                    "secure_url": audio_url,
-                    "cover_url": cover_url,
-                    "source": "youtube",
-                    "metadata": meta,
-                })
-
-        # ─────────────────────────────────────────────────────────────────────
-        #  PATH 2: Title / Artist or Spotify URL (Hybrid SpotiFLAC + YouTube)
-        # ─────────────────────────────────────────────────────────────────────
-        # 1. Resolve Spotify Metadata
+        # 1. Resolve Spotify Metadata (Tier 1 Metadata Resolution)
         spotify_meta, resolved_spotify_url = _resolve_spotify_track(title, artist, spotify_url=spotify_url)
         if spotify_meta:
             title = spotify_meta["title"]
@@ -1074,11 +1022,11 @@ def ingest():
         else:
             spotify_id = ""
 
-        # 2. Deduplication check
+        # 2. Deduplication check across video_id, spotify_id, and title/artist
         if not bypass_dedup:
-            existing_id = _find_existing_track(title, artist, spotify_id=spotify_id)
+            existing_id = _find_existing_track(title, artist, video_id=video_id, spotify_id=spotify_id)
             if existing_id:
-                log.info("Duplicate hit for '%s - %s' -> track %s", title, artist, existing_id)
+                log.info("Dedup hit for '%s - %s' (vid=%s, sp=%s) -> track %s", title, artist, video_id, spotify_id, existing_id)
                 if playlist_id:
                     _link_to_playlist(playlist_id, existing_id)
                 return jsonify({
@@ -1087,14 +1035,14 @@ def ingest():
                     "message": f"Song already exists (id={existing_id}). Linked to playlist."
                 })
 
-        # 3. Attempt Tier 1: SpotiFLAC (Studio Lossless)
+        # 3. Attempt Tier 1: SpotiFLAC (Studio Lossless Master from Tidal/Qobuz)
         downloaded_source = None
         duration_ms = 0
         used_engine = None
 
         with tempfile.TemporaryDirectory() as tmpdir:
             if resolved_spotify_url and SPOTIFLAC_AVAILABLE:
-                log.info("Tier 1: Attempting SpotiFLAC lossless engine for '%s - %s'...", title, artist)
+                log.info("Tier 1: Checking SpotiFLAC studio lossless catalog for '%s - %s' (%s)...", title, artist, resolved_spotify_url)
                 m4a_path, dur = _download_via_spotiflac(resolved_spotify_url, tmpdir)
                 if m4a_path and os.path.exists(m4a_path):
                     log.info("Tier 1 OK: SpotiFLAC lossless studio audio obtained ✓")
@@ -1108,7 +1056,12 @@ def ingest():
                     "Tier 1 (SpotiFLAC) unavailable or track not in lossless catalog for '%s - %s'. "
                     "Engaging Tier 2 YouTube Fallback...", title, artist
                 )
-                yt_url, yt_thumb, found_vid = _search_youtube(title, artist)
+                yt_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else None
+                yt_thumb = thumbnail_url
+                found_vid = video_id
+
+                if not yt_url:
+                    yt_url, yt_thumb, found_vid = _search_youtube(title, artist)
                 if not yt_url:
                     return jsonify({
                         "error": f"Track '{title} - {artist}' could not be resolved on Spotify lossless catalog or YouTube."
