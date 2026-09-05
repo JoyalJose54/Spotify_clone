@@ -7,8 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     nodejs \
+    && (which node >/dev/null 2>&1 || ln -sf /usr/bin/nodejs /usr/local/bin/node) \
     && rm -rf /var/lib/apt/lists/*
 
+ENV XDG_CACHE_HOME=/tmp/.cache
 WORKDIR /app
 
 # Copy and install python dependencies from cloud_functions folder

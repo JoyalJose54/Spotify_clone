@@ -183,9 +183,19 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     # Enable automated EJS challenge solver
     opts.setdefault("remote_components", ["ejs:github"])
 
-    # Configure JS runtime if node is installed
-    if shutil.which("node"):
-        opts.setdefault("js_runtimes", {"node": {}})
+    # Configure JS runtime if node or nodejs is installed
+    node_bin = (
+        shutil.which("node")
+        or shutil.which("nodejs")
+        or ("/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else None)
+        or ("/usr/bin/node" if os.path.exists("/usr/bin/node") else None)
+        or ("/usr/bin/nodejs" if os.path.exists("/usr/bin/nodejs") else None)
+    )
+    if node_bin:
+        opts["js_runtimes"] = {"node": {"path": node_bin}}
+        log.info("yt-dlp configured with node JS runtime at: %s", node_bin)
+    else:
+        log.warning("No nodejs binary found!")
 
     # Check for authentication cookies
     cookie_file = _get_cookie_file_path()
@@ -681,13 +691,16 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
 @app.route("/ping", methods=["GET"])
 def ping():
     cookie_present = bool(_get_cookie_file_path())
+    node_bin = shutil.which("node") or shutil.which("nodejs") or ("/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else None)
     return jsonify({
         "status": "online",
-        "version": "1.2.6",
+        "version": "1.2.7",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
-        "youtube_cookies_loaded": cookie_present
+        "youtube_cookies_loaded": cookie_present,
+        "node_available": bool(node_bin),
+        "node_path": node_bin
     }), 200
 
 
