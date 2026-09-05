@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: spotify-ingestion-backend
+    env: docker
+    dockerfilePath: ./cloud_functions/Dockerfile
+    dockerContext: ./cloud_functions
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: SHAZAM_KEYS
+        sync: false
