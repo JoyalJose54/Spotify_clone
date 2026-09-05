@@ -664,7 +664,7 @@ def ping():
     cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
-        "version": "1.2.4",
+        "version": "1.2.5",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
@@ -676,22 +676,22 @@ def ping():
 def debug_yt():
     v = request.args.get("v", "L5Z-1JlL5ss")
     yt_url = f"https://www.youtube.com/watch?v={v}"
-    ydl_opts = _get_ydl_opts({"quiet": True, "skip_download": True})
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(yt_url, download=False)
-            formats = info.get("formats", [])
-            summary = [{
-                "id": f.get("format_id"),
-                "acodec": f.get("acodec"),
-                "vcodec": f.get("vcodec"),
-                "ext": f.get("ext"),
-                "protocol": f.get("protocol"),
-                "has_url": bool(f.get("url"))
-            } for f in formats]
-            return jsonify({"title": info.get("title"), "total": len(formats), "formats": summary})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    results = {}
+    clients_to_check = ["android", "visionos", "android_vr", "tv", "mweb", "ios", "web_safari", "web"]
+    for c in clients_to_check:
+        try:
+            opts = {
+                "quiet": True,
+                "skip_download": True,
+                "extractor_args": {"youtube": {"player_client": [c]}}
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(yt_url, download=False)
+                fmts = len(info.get("formats", []))
+                results[c] = f"SUCCESS: {fmts} formats"
+        except Exception as e:
+            results[c] = f"ERROR: {str(e)[:120]}"
+    return jsonify({"video_id": v, "results": results}), 200
 
 
 @app.route("/search", methods=["GET"])
