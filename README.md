@@ -1,3 +1,13 @@
+---
+title: Spotify Ingestion Backend
+emoji: 🎵
+colorFrom: green
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 <div align="center">
 
 <img src="assets/images/logo.webp" alt="Spotify Clone Logo" width="120" />

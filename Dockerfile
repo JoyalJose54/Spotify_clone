@@ -22,9 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY cloud_functions/ .
 
 # Set default port and SpotiFLAC registries
-ENV PORT=8080
+ENV PORT=7860
 ENV SPOTIFLAC_REGISTRIES=https://raw.githubusercontent.com/zarzet/SpotiFLAC-Extension/main/registry.json
-EXPOSE 8080
+EXPOSE 7860 8080
 
-# Run with Gunicorn production WSGI server (timeout 300s for large audio downloads)
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 300 main:app
+# Configure non-root user for Hugging Face Spaces compatibility
+RUN useradd -m -u 1000 user && chown -R user:user /app
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
+
+# Run with Gunicorn production WSGI server (timeout 300s for audio downloads)
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 1 --threads 4 --timeout 300 main:app"]
