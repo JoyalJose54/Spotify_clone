@@ -694,7 +694,7 @@ def ping():
     node_bin = shutil.which("node") or shutil.which("nodejs") or ("/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else None)
     return jsonify({
         "status": "online",
-        "version": "1.2.7",
+        "version": "1.2.8",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
