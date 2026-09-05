@@ -28,6 +28,7 @@ import urllib.parse
 import base64
 import io
 import zipfile
+import gc
 from pathlib import Path
 
 try:
@@ -339,6 +340,7 @@ def _transcode_audio_to_m4a(input_path: str, output_path: str, bitrate: str = "2
         try:
             cmd = [
                 "ffmpeg", "-y", "-i", input_path,
+                "-threads", "1",
                 "-c:a", "aac",
                 "-b:a", bitrate,
                 "-ar", "44100",
@@ -590,6 +592,8 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
         "restrictfilenames": True,
         "socket_timeout": 20,
         "retries": 2,
+        "buffersize": 64 * 1024,
+        "http_chunk_size": 1024 * 1024,
     }
 
     strategies = []
@@ -853,7 +857,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.8",
+        "version": "1.3.9",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
@@ -1181,6 +1185,8 @@ def ingest():
     except Exception as exc:
         log.exception("Ingestion failed: %s", exc)
         return jsonify({"error": str(exc)}), 500
+    finally:
+        gc.collect()
 
 
 @app.route("/delete", methods=["POST"])

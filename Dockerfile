@@ -32,5 +32,5 @@ USER user
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH
 
-# Run with Gunicorn production WSGI server (timeout 300s for audio downloads)
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 1 --threads 4 --timeout 300 main:app"]
+# Run with Gunicorn production WSGI server (threads=2 and max-requests=25 to strictly bound RAM < 200MB)
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 2 --max-requests 25 --timeout 300 main:app"]
