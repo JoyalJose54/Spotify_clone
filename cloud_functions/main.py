@@ -169,10 +169,10 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     """
     opts = base_opts.copy()
 
-    # Emulate Android player client (prevents 429 and bot detection on cloud IPs)
+    # Emulate iOS, Android & web player clients for maximum availability
     opts.setdefault("extractor_args", {
         "youtube": {
-            "player_client": ["android", "web"],
+            "player_client": ["ios", "android", "mweb", "web"],
         }
     })
 
@@ -437,10 +437,10 @@ def _fetch_ytmusic_thumbnail(title: str, artist: str) -> str | None:
     return None
 
 
-def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int]:
+def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int, str | None]:
     """
     Download audio via yt-dlp with anti-blocking configuration and transcode to 256k AAC M4A.
-    Returns (transcoded_m4a_path, duration_ms) or (None, 0).
+    Returns (transcoded_m4a_path, duration_ms, error_message).
     """
     out_tpl = os.path.join(output_dir, "%(id)s.%(ext)s")
     ydl_opts = _get_ydl_opts({
@@ -472,7 +472,7 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
 
         if not downloaded:
             log.error("yt-dlp downloaded no files into directory.")
-            return None, 0
+            return None, 0, "No audio file produced by yt-dlp"
 
         source_file = str(downloaded[0])
         log.info("yt-dlp produced file: %s (%d KB)", source_file, os.path.getsize(source_file) // 1024)
@@ -480,15 +480,16 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
         transcoded_m4a = os.path.join(output_dir, "transcoded_yt_audio.m4a")
         if _transcode_audio_to_m4a(source_file, transcoded_m4a, bitrate="256k"):
             dur = _get_audio_duration_ms(transcoded_m4a) or duration_ms
-            return transcoded_m4a, dur
+            return transcoded_m4a, dur, None
         elif source_file.endswith(".m4a"):
             dur = _get_audio_duration_ms(source_file) or duration_ms
-            return source_file, dur
+            return source_file, dur, None
+
+        return None, 0, "Audio transcoding to M4A failed"
 
     except Exception as e:
         log.exception("YouTube download failed: %s", e)
-
-    return None, 0
+        return None, 0, str(e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -663,6 +664,7 @@ def ping():
     cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
+        "version": "1.2.1",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
@@ -802,9 +804,10 @@ def ingest():
             yt_thumb = thumbnail_url or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                m4a_path, duration_ms = _download_via_youtube(yt_url, tmpdir)
+                m4a_path, duration_ms, err_msg = _download_via_youtube(yt_url, tmpdir)
                 if not m4a_path or not os.path.exists(m4a_path):
-                    return jsonify({"error": "Could not download YouTube audio for video_id: " + video_id}), 500
+                    details = f": {err_msg}" if err_msg else ""
+                    return jsonify({"error": f"Could not download YouTube audio for video_id: {video_id}{details}"}), 500
 
                 clean_t = title or "YouTube Track"
                 clean_a = artist or "Unknown Artist"
@@ -904,10 +907,11 @@ def ingest():
                         "error": f"Track '{title} - {artist}' could not be resolved on Spotify lossless catalog or YouTube."
                     }), 404
 
-                m4a_path, dur = _download_via_youtube(yt_url, tmpdir)
+                m4a_path, dur, err_msg = _download_via_youtube(yt_url, tmpdir)
                 if not m4a_path or not os.path.exists(m4a_path):
+                    details = f" ({err_msg})" if err_msg else ""
                     return jsonify({
-                        "error": f"Failed to download audio for '{title} - {artist}' via YouTube fallback."
+                        "error": f"Failed to download audio for '{title} - {artist}' via YouTube fallback{details}."
                     }), 500
 
                 log.info("Tier 2 OK: YouTube fallback audio downloaded & transcoded ✓")

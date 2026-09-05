@@ -7,9 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Backend base URL – Python backend running on laptop (cloud_functions/main.py)
+//  Backend base URL – Render cloud service (or local override)
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'https://spotify-clone-uehl.onrender.com');
+const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'https://spotify-ingestion-backend.onrender.com');
 
 class IngestionResult {
   final bool   success;
@@ -91,14 +91,27 @@ class IngestionService {
   // ── Backend URL (reads from SharedPreferences so user can override) ──────
   static Future<String> _getBase() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('backend_url') ?? _kBackendBase;
+    final saved = prefs.getString('backend_url')?.trim();
+    if (saved != null && saved.isNotEmpty) {
+      // Auto-migrate old / dead URL if user had saved it previously
+      if (saved.contains('spotify-clone-uehl.onrender.com')) {
+        await prefs.setString('backend_url', _kBackendBase);
+        return _kBackendBase;
+      }
+      return saved.endsWith('/') ? saved.substring(0, saved.length - 1) : saved;
+    }
+    return _kBackendBase;
   }
 
   static Future<String> getActiveBackendUrl() => _getBase();
 
   static Future<void> updateBackendUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('backend_url', url);
+    var clean = url.trim();
+    while (clean.endsWith('/')) {
+      clean = clean.substring(0, clean.length - 1);
+    }
+    await prefs.setString('backend_url', clean);
   }
 
   static Future<bool> isBackendOnline() async {
@@ -106,7 +119,7 @@ class IngestionService {
       final base = await _getBase();
       final resp = await http
           .get(Uri.parse('$base/ping'))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
       return resp.statusCode == 200;
     } catch (_) {
       return false;
