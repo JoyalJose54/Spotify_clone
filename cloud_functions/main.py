@@ -169,10 +169,10 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     """
     opts = base_opts.copy()
 
-    # Emulate Android & iOS player clients to completely avoid Web bot detection
+    # Emulate VisionOS & Android player clients to completely avoid Web bot detection
     opts.setdefault("extractor_args", {
         "youtube": {
-            "player_client": ["android", "ios"],
+            "player_client": ["visionos", "android_vr", "android"],
         }
     })
 
@@ -664,7 +664,7 @@ def ping():
     cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
-        "version": "1.2.2",
+        "version": "1.2.3",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,

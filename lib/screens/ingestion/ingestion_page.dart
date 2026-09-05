@@ -94,7 +94,7 @@ class _IngestionPageState extends State<IngestionPage>
               style: SpotifyFonts.regular(color: Colors.white, fontSize: 14),
               cursorColor: SpotifyColors.green,
               decoration: InputDecoration(
-                hintText: 'https://spotify-clone-uehl.onrender.com',
+                hintText: 'https://spotify-ingestion-backend.onrender.com',
                 hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 13),
                 labelText: 'Backend Server URL',
                 labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 12),
