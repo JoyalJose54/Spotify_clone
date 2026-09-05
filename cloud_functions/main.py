@@ -592,8 +592,24 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
         "extractor_args": {"youtube": {"player_client": ["ios", "tv_embedded"]}}
     }))
 
+    class CapturedLogger:
+        def __init__(self):
+            self.lines = []
+        def debug(self, msg):
+            if any(k in msg for k in ["[jsc", "challenge", "solver", "EJS", "error", "warn", "client", "format", "bot", "Sign in", "deno", "node"]):
+                self.lines.append(f"[debug] {msg}")
+        def warning(self, msg):
+            self.lines.append(f"[warn] {msg}")
+        def error(self, msg):
+            self.lines.append(f"[err] {msg}")
+
     last_err = None
+    diag_logs = []
     for name, opts in strategies:
+        cl = CapturedLogger()
+        opts["logger"] = cl
+        opts["verbose"] = True
+        opts["quiet"] = False
         try:
             log.info("Attempting YouTube audio download via [%s] from: %s", name, yt_url)
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -623,9 +639,12 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
 
         except Exception as e:
             last_err = str(e)
-            log.warning("Strategy [%s] failed for %s: %s", name, yt_url, e)
+            tail = " | ".join(cl.lines[-6:])
+            diag_logs.append(f"[{name}: {last_err} (logs: {tail})]")
+            log.warning("Strategy [%s] failed for %s: %s (logs: %s)", name, yt_url, e, tail)
 
-    return None, 0, last_err or "All YouTube download strategies failed"
+    combined_err = " ; ".join(diag_logs) if diag_logs else (last_err or "All strategies failed")
+    return None, 0, combined_err
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -818,7 +837,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.4",
+        "version": "1.3.5",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
