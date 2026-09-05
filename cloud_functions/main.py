@@ -213,35 +213,42 @@ def _get_cookie_file_path() -> str | None:
 _JS_RUNTIME_PATH = None
 
 def _ensure_js_runtime() -> str | None:
-    """Ensure a modern JavaScript runtime (node or deno) is available for yt-dlp EJS challenges."""
+    """Ensure a modern JavaScript runtime (Node.js or QuickJS) is available for yt-dlp EJS challenges."""
     global _JS_RUNTIME_PATH
     if _JS_RUNTIME_PATH and (os.path.exists(_JS_RUNTIME_PATH) or shutil.which(_JS_RUNTIME_PATH)):
         return _JS_RUNTIME_PATH
 
-    # 1. Check existing system binaries
-    for name in ["node", "nodejs", "qjs"]:
+    # 1. Check existing system binaries - Prioritize Node.js
+    for name in ["node", "nodejs"]:
         p = shutil.which(name)
         if p:
             _JS_RUNTIME_PATH = p
             return p
 
-    # 2. Check common Linux locations
-    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs", "/tmp/bin/node", "/tmp/bin/qjs"]:
+    # 2. Check common Linux locations for Node.js
+    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs", "/tmp/bin/node"]:
         if os.path.exists(p) and os.access(p, os.X_OK):
             if "/tmp/bin" not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"/tmp/bin:{os.environ.get('PATH', '')}"
             _JS_RUNTIME_PATH = p
             return p
 
-    # 3. Auto-download standalone QuickJS static Linux binary (2.5MB, instantaneous)
+    # 3. Check for existing qjs
+    p = shutil.which("qjs") or ("/tmp/bin/qjs" if os.path.exists("/tmp/bin/qjs") else None)
+    if p and os.path.exists(p) and os.access(p, os.X_OK):
+        _JS_RUNTIME_PATH = p
+        return p
+
+    # 4. Auto-provision QuickJS static Linux binary with wrapper that strips '--script'
     if os.name != "nt":
         target_dir = "/tmp/bin"
-        target_bin = os.path.join(target_dir, "qjs")
-        if os.path.exists(target_bin) and os.access(target_bin, os.X_OK) and os.path.getsize(target_bin) > 1000000:
+        qjs_real = os.path.join(target_dir, "qjs_bin")
+        qjs_wrapper = os.path.join(target_dir, "qjs")
+        if os.path.exists(qjs_wrapper) and os.access(qjs_wrapper, os.X_OK):
             if target_dir not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
-            _JS_RUNTIME_PATH = target_bin
-            return target_bin
+            _JS_RUNTIME_PATH = qjs_wrapper
+            return qjs_wrapper
 
         try:
             log.info("Downloading standalone QuickJS static Linux binary for yt-dlp challenge solving...")
@@ -249,14 +256,27 @@ def _ensure_js_runtime() -> str | None:
             qjs_url = "https://github.com/quickjs-ng/quickjs/releases/download/v0.16.2/qjs-linux-x86_64"
             resp = requests.get(qjs_url, timeout=45)
             if resp.status_code == 200 and len(resp.content) > 1000000:
-                with open(target_bin, "wb") as f:
+                with open(qjs_real, "wb") as f:
                     f.write(resp.content)
-                os.chmod(target_bin, 0o755)
+                os.chmod(qjs_real, 0o755)
+
+                # Write shell wrapper to strip '--script' flag which yt-dlp passes but qjs rejects
+                with open(qjs_wrapper, "w") as f:
+                    f.write("#!/bin/sh\n")
+                    f.write('ARGS=""\n')
+                    f.write('for a in "$@"; do\n')
+                    f.write('  if [ "$a" != "--script" ]; then\n')
+                    f.write('    ARGS="$ARGS \\"$a\\""\n')
+                    f.write('  fi\n')
+                    f.write('done\n')
+                    f.write(f'eval exec {qjs_real} $ARGS\n')
+                os.chmod(qjs_wrapper, 0o755)
+
                 if target_dir not in os.environ.get("PATH", ""):
                     os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
-                log.info("QuickJS static binary installed successfully at: %s (%d bytes)", target_bin, len(resp.content))
-                _JS_RUNTIME_PATH = target_bin
-                return target_bin
+                log.info("QuickJS wrapper installed successfully at: %s", qjs_wrapper)
+                _JS_RUNTIME_PATH = qjs_wrapper
+                return qjs_wrapper
         except Exception as e:
             log.warning("Failed to auto-install QuickJS runtime: %s", e)
 
@@ -296,8 +316,8 @@ def _get_ydl_opts(base_opts: dict) -> dict:
         })
 
     # Network timeouts and retries
-    opts.setdefault("socket_timeout", 30)
-    opts.setdefault("retries", 3)
+    opts.setdefault("socket_timeout", 20)
+    opts.setdefault("retries", 2)
 
     # Proxy support if configured
     proxy = os.environ.get("YT_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
@@ -561,20 +581,15 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
     """
     out_tpl = os.path.join(output_dir, "%(id)s.%(ext)s")
     base_ydl = {
-        "format": "bestaudio/best",
+        "format": "m4a/bestaudio/best",
         "outtmpl": out_tpl,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "windowsfilenames": True,
         "restrictfilenames": True,
-        "socket_timeout": 30,
-        "retries": 3,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "m4a",
-            "preferredquality": "256",
-        }],
+        "socket_timeout": 20,
+        "retries": 2,
     }
 
     strategies = []
@@ -838,7 +853,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.7",
+        "version": "1.3.8",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
@@ -849,6 +864,8 @@ def ping():
         "cookie_has_login": cookie_has_login,
         "env_youtube_cookies_len": len(os.environ.get("YOUTUBE_COOKIES", "")),
         "env_youtube_cookies_b64_len": len(os.environ.get("YOUTUBE_COOKIES_BASE64", "")),
+        "ffmpeg_available": bool(shutil.which("ffmpeg")),
+        "node_available": bool(shutil.which("node")),
         "js_runtime_available": bool(js_bin),
         "js_runtime_path": js_bin,
         "dir_files": dir_files,

@@ -1,11 +1,15 @@
 # Lightweight Python 3.11 image
 FROM python:3.11-slim
 
-# Install system dependencies (ffmpeg for audio transcoding, git/curl)
+# Install system dependencies & Node.js 22 LTS (required by yt-dlp 2025 JS challenge solver)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     git \
     curl \
+    ca-certificates \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
