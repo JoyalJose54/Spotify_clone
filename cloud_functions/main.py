@@ -115,6 +115,29 @@ YT_MUSIC_SEARCH = "https://music.youtube.com/search?q="
 # ─────────────────────────────────────────────────────────────────────────────
 _COOKIES_TMP_FILE = None
 
+def _sanitize_and_save_cookies(raw_text: str) -> str | None:
+    """Sanitize cookies by stripping expired/mismatched LOGIN_INFO and ensuring Netscape header."""
+    global _COOKIES_TMP_FILE
+    try:
+        lines = raw_text.splitlines()
+        # Filter out LOGIN_INFO which triggers YouTube's 'The page needs to be reloaded' on cloud IPs
+        clean_lines = [l for l in lines if "LOGIN_INFO" not in l]
+        sanitized = "\n".join(clean_lines).strip()
+        if not sanitized.startswith("# Netscape HTTP Cookie File"):
+            sanitized = "# Netscape HTTP Cookie File\n" + sanitized
+
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
+        tf.write(sanitized + "\n")
+        tf.flush()
+        tf.close()
+        _COOKIES_TMP_FILE = tf.name
+        log.info("Saved sanitized cookies to: %s (%d bytes)", _COOKIES_TMP_FILE, len(sanitized))
+        return _COOKIES_TMP_FILE
+    except Exception as e:
+        log.warning("Failed to sanitize cookies: %s", e)
+        return None
+
+
 def _get_cookie_file_path() -> str | None:
     """Check for local cookies.txt or decode YOUTUBE_COOKIES / YOUTUBE_COOKIES_BASE64 from environment."""
     global _COOKIES_TMP_FILE
@@ -132,45 +155,45 @@ def _get_cookie_file_path() -> str | None:
             for fname in ["cookies.txt", "www.youtube.com_cookies.txt", "youtube_cookies.txt"]:
                 full_p = os.path.join(bd, fname)
                 if os.path.exists(full_p) and os.path.getsize(full_p) > 10:
-                    log.info("Found local cookies file: %s", full_p)
-                    return full_p
+                    try:
+                        with open(full_p, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        sanitized_path = _sanitize_and_save_cookies(content)
+                        if sanitized_path:
+                            return sanitized_path
+                    except Exception as e:
+                        log.warning("Error reading local cookie file %s: %s", full_p, e)
+                        return full_p
+
             for p in Path(bd).glob("*cookie*.txt"):
                 if p.is_file() and p.stat().st_size > 10:
-                    log.info("Found globbed cookies file: %s", str(p))
-                    return str(p)
+                    try:
+                        with open(str(p), "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        sanitized_path = _sanitize_and_save_cookies(content)
+                        if sanitized_path:
+                            return sanitized_path
+                    except Exception as e:
+                        log.warning("Error reading local cookie file %s: %s", str(p), e)
+                        return str(p)
 
     # 2. Check base64 encoded cookies environment variable
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
     if cookies_b64:
         try:
             decoded = base64.b64decode(cookies_b64).decode("utf-8", errors="ignore")
-            if not decoded.startswith("# Netscape HTTP Cookie File"):
-                decoded = "# Netscape HTTP Cookie File\n" + decoded
-            tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
-            tf.write(decoded)
-            tf.flush()
-            tf.close()
-            _COOKIES_TMP_FILE = tf.name
-            log.info("Decoded YOUTUBE_COOKIES_BASE64 to temporary cookie file: %s", _COOKIES_TMP_FILE)
-            return _COOKIES_TMP_FILE
+            sanitized_path = _sanitize_and_save_cookies(decoded)
+            if sanitized_path:
+                return sanitized_path
         except Exception as e:
             log.warning("Failed to decode YOUTUBE_COOKIES_BASE64: %s", e)
 
-    # 3. Check plain text cookies environment variable (auto-ensure Netscape header)
+    # 3. Check plain text cookies environment variable
     cookies_raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
     if cookies_raw and len(cookies_raw) > 20:
-        try:
-            if not cookies_raw.startswith("# Netscape HTTP Cookie File"):
-                cookies_raw = "# Netscape HTTP Cookie File\n" + cookies_raw
-            tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
-            tf.write(cookies_raw)
-            tf.flush()
-            tf.close()
-            _COOKIES_TMP_FILE = tf.name
-            log.info("Wrote YOUTUBE_COOKIES to temporary cookie file: %s", _COOKIES_TMP_FILE)
-            return _COOKIES_TMP_FILE
-        except Exception as e:
-            log.warning("Failed to write YOUTUBE_COOKIES: %s", e)
+        sanitized_path = _sanitize_and_save_cookies(cookies_raw)
+        if sanitized_path:
+            return sanitized_path
 
     return None
 
@@ -743,7 +766,7 @@ def ping():
     js_bin = _ensure_js_runtime()
     return jsonify({
         "status": "online",
-        "version": "1.3.0",
+        "version": "1.3.1",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
