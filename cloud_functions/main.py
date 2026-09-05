@@ -226,38 +226,40 @@ def _ensure_js_runtime() -> str | None:
             return p
 
     # 2. Check common Linux locations
-    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs", "/tmp/bin/deno"]:
+    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs"]:
         if os.path.exists(p) and os.access(p, os.X_OK):
-            if "/tmp/bin" not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = f"/tmp/bin:{os.environ.get('PATH', '')}"
             _JS_RUNTIME_PATH = p
             return p
 
-    # 3. Auto-download standalone Deno binary for Linux if running in Linux (e.g. Render)
+    # 3. Auto-download standalone Deno 1.46.3 binary for Linux (yt-dlp requires Deno < 2.0.0)
     if os.name != "nt":
         target_dir = "/tmp/bin"
         target_bin = os.path.join(target_dir, "deno")
-        if os.path.exists(target_bin) and os.access(target_bin, os.X_OK):
+        version_marker = os.path.join(target_dir, ".deno_1463")
+        if os.path.exists(target_bin) and os.path.exists(version_marker) and os.access(target_bin, os.X_OK):
             if target_dir not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
             _JS_RUNTIME_PATH = target_bin
             return target_bin
 
         try:
-            log.info("Downloading standalone Deno JS runtime for yt-dlp challenge solving...")
+            log.info("Downloading standalone Deno 1.46.3 (yt-dlp supported) for challenge solving...")
             os.makedirs(target_dir, exist_ok=True)
-            deno_url = "https://github.com/denoland/deno/releases/download/v2.1.4/deno-x86_64-unknown-linux-gnu.zip"
-            resp = requests.get(deno_url, timeout=45)
+            deno_url = "https://github.com/denoland/deno/releases/download/v1.46.3/deno-x86_64-unknown-linux-gnu.zip"
+            resp = requests.get(deno_url, timeout=60)
             if resp.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
                     z.extract("deno", target_dir)
                 os.chmod(target_bin, 0o755)
-                os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
-                log.info("Deno JS runtime installed successfully at: %s", target_bin)
+                with open(version_marker, "w") as vf:
+                    vf.write("1.46.3")
+                if target_dir not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
+                log.info("Deno 1.46.3 runtime installed successfully at: %s", target_bin)
                 _JS_RUNTIME_PATH = target_bin
                 return target_bin
         except Exception as e:
-            log.warning("Failed to auto-install Deno JS runtime: %s", e)
+            log.warning("Failed to auto-install Deno 1.46.3: %s", e)
 
     return None
 
@@ -837,7 +839,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.5",
+        "version": "1.3.6",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
