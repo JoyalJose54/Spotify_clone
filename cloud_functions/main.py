@@ -26,6 +26,8 @@ import shutil
 import subprocess
 import urllib.parse
 import base64
+import io
+import zipfile
 from pathlib import Path
 
 try:
@@ -173,6 +175,58 @@ def _get_cookie_file_path() -> str | None:
     return None
 
 
+_JS_RUNTIME_PATH = None
+
+def _ensure_js_runtime() -> str | None:
+    """Ensure a modern JavaScript runtime (node or deno) is available for yt-dlp EJS challenges."""
+    global _JS_RUNTIME_PATH
+    if _JS_RUNTIME_PATH and (os.path.exists(_JS_RUNTIME_PATH) or shutil.which(_JS_RUNTIME_PATH)):
+        return _JS_RUNTIME_PATH
+
+    # 1. Check existing system binaries
+    for name in ["node", "nodejs", "deno", "qjs"]:
+        p = shutil.which(name)
+        if p:
+            _JS_RUNTIME_PATH = p
+            return p
+
+    # 2. Check common Linux locations
+    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs", "/tmp/bin/deno"]:
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            if "/tmp/bin" not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = f"/tmp/bin:{os.environ.get('PATH', '')}"
+            _JS_RUNTIME_PATH = p
+            return p
+
+    # 3. Auto-download standalone Deno binary for Linux if running in Linux (e.g. Render)
+    if os.name != "nt":
+        target_dir = "/tmp/bin"
+        target_bin = os.path.join(target_dir, "deno")
+        if os.path.exists(target_bin) and os.access(target_bin, os.X_OK):
+            if target_dir not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
+            _JS_RUNTIME_PATH = target_bin
+            return target_bin
+
+        try:
+            log.info("Downloading standalone Deno JS runtime for yt-dlp challenge solving...")
+            os.makedirs(target_dir, exist_ok=True)
+            deno_url = "https://github.com/denoland/deno/releases/download/v2.1.4/deno-x86_64-unknown-linux-gnu.zip"
+            resp = requests.get(deno_url, timeout=45)
+            if resp.status_code == 200:
+                with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                    z.extract("deno", target_dir)
+                os.chmod(target_bin, 0o755)
+                os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
+                log.info("Deno JS runtime installed successfully at: %s", target_bin)
+                _JS_RUNTIME_PATH = target_bin
+                return target_bin
+        except Exception as e:
+            log.warning("Failed to auto-install Deno JS runtime: %s", e)
+
+    return None
+
+
 def _get_ydl_opts(base_opts: dict) -> dict:
     """
     Return hardened yt-dlp options configured to prevent datacenter IP blocks.
@@ -183,19 +237,14 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     # Enable automated EJS challenge solver
     opts.setdefault("remote_components", ["ejs:github"])
 
-    # Configure JS runtime if node or nodejs is installed
-    node_bin = (
-        shutil.which("node")
-        or shutil.which("nodejs")
-        or ("/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else None)
-        or ("/usr/bin/node" if os.path.exists("/usr/bin/node") else None)
-        or ("/usr/bin/nodejs" if os.path.exists("/usr/bin/nodejs") else None)
-    )
-    if node_bin:
-        opts["js_runtimes"] = {"node": {"path": node_bin}}
-        log.info("yt-dlp configured with node JS runtime at: %s", node_bin)
+    # Configure JS runtime if available (node, deno, etc.)
+    js_bin = _ensure_js_runtime()
+    if js_bin:
+        runtime_name = "deno" if "deno" in os.path.basename(js_bin).lower() else "node"
+        opts["js_runtimes"] = {runtime_name: {"path": js_bin}}
+        log.info("yt-dlp using %s JS runtime at: %s", runtime_name, js_bin)
     else:
-        log.warning("No nodejs binary found!")
+        log.warning("No JS runtime (node/deno) available for yt-dlp!")
 
     # Check for authentication cookies
     cookie_file = _get_cookie_file_path()
@@ -691,19 +740,16 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
 @app.route("/ping", methods=["GET"])
 def ping():
     cookie_present = bool(_get_cookie_file_path())
-    found_nodes = [p for p in ["/usr/bin/node", "/usr/bin/nodejs", "/usr/local/bin/node", "/bin/node", "/usr/bin/qjs"] if os.path.exists(p)]
-    node_bin = (found_nodes[0] if found_nodes else None) or shutil.which("node") or shutil.which("nodejs")
+    js_bin = _ensure_js_runtime()
     return jsonify({
         "status": "online",
-        "version": "1.2.9",
+        "version": "1.3.0",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
         "youtube_cookies_loaded": cookie_present,
-        "node_available": bool(node_bin),
-        "node_path": node_bin,
-        "found_nodes": found_nodes,
-        "path_env": os.environ.get("PATH", "")
+        "js_runtime_available": bool(js_bin),
+        "js_runtime_path": js_bin,
     }), 200
 
 
