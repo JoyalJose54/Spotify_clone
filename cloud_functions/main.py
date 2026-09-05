@@ -664,12 +664,34 @@ def ping():
     cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
-        "version": "1.2.3",
+        "version": "1.2.4",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
         "youtube_cookies_loaded": cookie_present
     }), 200
+
+
+@app.route("/debug_yt", methods=["GET"])
+def debug_yt():
+    v = request.args.get("v", "L5Z-1JlL5ss")
+    yt_url = f"https://www.youtube.com/watch?v={v}"
+    ydl_opts = _get_ydl_opts({"quiet": True, "skip_download": True})
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(yt_url, download=False)
+            formats = info.get("formats", [])
+            summary = [{
+                "id": f.get("format_id"),
+                "acodec": f.get("acodec"),
+                "vcodec": f.get("vcodec"),
+                "ext": f.get("ext"),
+                "protocol": f.get("protocol"),
+                "has_url": bool(f.get("url"))
+            } for f in formats]
+            return jsonify({"title": info.get("title"), "total": len(formats), "formats": summary})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/search", methods=["GET"])
