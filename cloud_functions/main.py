@@ -219,47 +219,46 @@ def _ensure_js_runtime() -> str | None:
         return _JS_RUNTIME_PATH
 
     # 1. Check existing system binaries
-    for name in ["node", "nodejs", "deno", "qjs"]:
+    for name in ["node", "nodejs", "qjs"]:
         p = shutil.which(name)
         if p:
             _JS_RUNTIME_PATH = p
             return p
 
     # 2. Check common Linux locations
-    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs"]:
+    for p in ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/nodejs", "/tmp/bin/node", "/tmp/bin/qjs"]:
         if os.path.exists(p) and os.access(p, os.X_OK):
+            if "/tmp/bin" not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = f"/tmp/bin:{os.environ.get('PATH', '')}"
             _JS_RUNTIME_PATH = p
             return p
 
-    # 3. Auto-download standalone Deno 1.46.3 binary for Linux (yt-dlp requires Deno < 2.0.0)
+    # 3. Auto-download standalone QuickJS static Linux binary (2.5MB, instantaneous)
     if os.name != "nt":
         target_dir = "/tmp/bin"
-        target_bin = os.path.join(target_dir, "deno")
-        version_marker = os.path.join(target_dir, ".deno_1463")
-        if os.path.exists(target_bin) and os.path.exists(version_marker) and os.access(target_bin, os.X_OK):
+        target_bin = os.path.join(target_dir, "qjs")
+        if os.path.exists(target_bin) and os.access(target_bin, os.X_OK) and os.path.getsize(target_bin) > 1000000:
             if target_dir not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
             _JS_RUNTIME_PATH = target_bin
             return target_bin
 
         try:
-            log.info("Downloading standalone Deno 1.46.3 (yt-dlp supported) for challenge solving...")
+            log.info("Downloading standalone QuickJS static Linux binary for yt-dlp challenge solving...")
             os.makedirs(target_dir, exist_ok=True)
-            deno_url = "https://github.com/denoland/deno/releases/download/v1.46.3/deno-x86_64-unknown-linux-gnu.zip"
-            resp = requests.get(deno_url, timeout=60)
-            if resp.status_code == 200:
-                with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-                    z.extract("deno", target_dir)
+            qjs_url = "https://github.com/quickjs-ng/quickjs/releases/download/v0.16.2/qjs-linux-x86_64"
+            resp = requests.get(qjs_url, timeout=45)
+            if resp.status_code == 200 and len(resp.content) > 1000000:
+                with open(target_bin, "wb") as f:
+                    f.write(resp.content)
                 os.chmod(target_bin, 0o755)
-                with open(version_marker, "w") as vf:
-                    vf.write("1.46.3")
                 if target_dir not in os.environ.get("PATH", ""):
                     os.environ["PATH"] = f"{target_dir}:{os.environ.get('PATH', '')}"
-                log.info("Deno 1.46.3 runtime installed successfully at: %s", target_bin)
+                log.info("QuickJS static binary installed successfully at: %s (%d bytes)", target_bin, len(resp.content))
                 _JS_RUNTIME_PATH = target_bin
                 return target_bin
         except Exception as e:
-            log.warning("Failed to auto-install Deno 1.46.3: %s", e)
+            log.warning("Failed to auto-install QuickJS runtime: %s", e)
 
     return None
 
@@ -274,14 +273,14 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     # Enable automated EJS challenge solver
     opts.setdefault("remote_components", {"ejs:github"})
 
-    # Configure JS runtime if available (node, deno, etc.)
+    # Configure JS runtime if available (node, quickjs, etc.)
     js_bin = _ensure_js_runtime()
     if js_bin:
-        runtime_name = "deno" if "deno" in os.path.basename(js_bin).lower() else "node"
+        runtime_name = "node" if "node" in os.path.basename(js_bin).lower() else "quickjs"
         opts["js_runtimes"] = {runtime_name: {"path": js_bin}}
         log.info("yt-dlp using %s JS runtime at: %s", runtime_name, js_bin)
     else:
-        log.warning("No JS runtime (node/deno) available for yt-dlp!")
+        log.warning("No JS runtime (node/quickjs) available for yt-dlp!")
 
     # Check for authentication cookies
     cookie_file = _get_cookie_file_path()
@@ -839,7 +838,7 @@ def ping():
 
     return jsonify({
         "status": "online",
-        "version": "1.3.6",
+        "version": "1.3.7",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,

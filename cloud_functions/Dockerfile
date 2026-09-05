@@ -15,12 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV XDG_CACHE_HOME=/tmp/.cache
 WORKDIR /app
 
-# Copy and install python dependencies from cloud_functions folder
-COPY cloud_functions/requirements.txt ./requirements.txt
+# Copy and install python dependencies
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code from cloud_functions folder
-COPY cloud_functions/ .
+# Copy source code
+COPY . .
 
 # Set default port and SpotiFLAC registries
 ENV PORT=8080
