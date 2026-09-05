@@ -1,21 +1,17 @@
 """
-SpotiFLAC Pure Ingestion Cloud Function
-========================================
-Endpoint: POST /ingest
-Body:
-    {
-        "title":       "Blinding Lights",
-        "artist":      "The Weeknd",
-        "spotify_url": "https://open.spotify.com/track/...", # optional
-        "playlist_id": "abc123"                              # optional
-    }
+Hybrid Music Ingestion Cloud Function
+======================================
+Architecture:
+    - Tier 1: SpotiFLAC (Official Spotify metadata + Tidal/Qobuz Studio Lossless Audio).
+    - Tier 2: YouTube Fallback (yt-dlp with anti-blocking Android client extractor)
+              Handles regional, Malayalam, Tamil, indie, and unstreamed tracks seamlessly.
 
-Pure SpotiFLAC Architecture:
-    1. Spotify Metadata: Resolved directly via official Spotify API (SpotifyMetadataClient).
-    2. Audio Download: Lossless studio FLAC via SpotiFLAC (Tidal / Qobuz lossless provider).
-    3. In-flight Transcoding: FLAC -> 256 kbps AAC M4A via ffmpeg (+faststart).
-    4. Cloud Storage: Optimized M4A + 640x640 album artwork stored on Cloudinary.
-    5. Database: Track record and playlist associations saved in Firestore.
+Endpoints:
+    - POST /ingest   -> Ingest via SpotiFLAC with automatic YouTube fallback
+    - GET  /search   -> Search catalog / YouTube (used by Flutter Search)
+    - GET  /preview  -> Audio preview streaming URL for Flutter Search
+    - POST /delete   -> Complete track deletion (Cloudinary + Firestore)
+    - GET  /ping     -> Health check & engine status
 """
 
 from __future__ import annotations
@@ -28,6 +24,8 @@ import tempfile
 import logging
 import shutil
 import subprocess
+import urllib.parse
+import base64
 from pathlib import Path
 
 try:
@@ -37,6 +35,7 @@ except ImportError:
     pass
 
 import requests
+import yt_dlp
 import cloudinary
 import cloudinary.uploader
 import firebase_admin
@@ -66,7 +65,7 @@ except ImportError:
 #  Bootstrap & Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-log = logging.getLogger("spotiflac_backend")
+log = logging.getLogger("hybrid_backend")
 
 app = Flask(__name__)
 
@@ -105,16 +104,102 @@ cloudinary.config(
     secure=True,
 )
 
-TRACKS_COL    = "tracks"
-PLAYLISTS_COL = "playlists"
+TRACKS_COL      = "tracks"
+PLAYLISTS_COL   = "playlists"
+YT_MUSIC_SEARCH = "https://music.youtube.com/search?q="
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Anti-Blocking YouTube yt-dlp Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+_COOKIES_TMP_FILE = None
+
+def _get_cookie_file_path() -> str | None:
+    """Check for local cookies.txt or decode YOUTUBE_COOKIES_BASE64 from environment."""
+    global _COOKIES_TMP_FILE
+    if _COOKIES_TMP_FILE and os.path.exists(_COOKIES_TMP_FILE):
+        return _COOKIES_TMP_FILE
+
+    # 1. Check local cookies.txt in current directory or cloud_functions/
+    candidates = [
+        "cookies.txt",
+        os.path.join(os.path.dirname(__file__), "cookies.txt"),
+        os.path.join(os.path.dirname(__file__), "../cookies.txt"),
+    ]
+    for c in candidates:
+        if os.path.exists(c) and os.path.getsize(c) > 10:
+            log.info("Found local cookies file: %s", c)
+            return c
+
+    # 2. Check base64 encoded cookies environment variable
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
+    if cookies_b64:
+        try:
+            decoded = base64.b64decode(cookies_b64).decode("utf-8")
+            tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
+            tf.write(decoded)
+            tf.flush()
+            tf.close()
+            _COOKIES_TMP_FILE = tf.name
+            log.info("Decoded YOUTUBE_COOKIES_BASE64 to temporary cookie file: %s", _COOKIES_TMP_FILE)
+            return _COOKIES_TMP_FILE
+        except Exception as e:
+            log.warning("Failed to decode YOUTUBE_COOKIES_BASE64: %s", e)
+
+    # 3. Check plain text cookies environment variable
+    cookies_raw = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if cookies_raw and "# Netscape HTTP Cookie File" in cookies_raw:
+        try:
+            tf = tempfile.NamedTemporaryFile(delete=False, suffix="_yt_cookies.txt", mode="w", encoding="utf-8")
+            tf.write(cookies_raw)
+            tf.flush()
+            tf.close()
+            _COOKIES_TMP_FILE = tf.name
+            log.info("Wrote YOUTUBE_COOKIES to temporary cookie file: %s", _COOKIES_TMP_FILE)
+            return _COOKIES_TMP_FILE
+        except Exception as e:
+            log.warning("Failed to write YOUTUBE_COOKIES: %s", e)
+
+    return None
+
+
+def _get_ydl_opts(base_opts: dict) -> dict:
+    """
+    Return hardened yt-dlp options configured to prevent datacenter IP blocks.
+    Uses android and web client emulation to bypass 'Sign in to confirm you're not a bot'.
+    """
+    opts = base_opts.copy()
+
+    # Emulate Android player client (prevents 429 and bot detection on cloud IPs)
+    opts.setdefault("extractor_args", {
+        "youtube": {
+            "player_client": ["android", "web"],
+            "player_skip": ["webpage", "configs"],
+        }
+    })
+
+    # Network timeouts and retries
+    opts.setdefault("socket_timeout", 30)
+    opts.setdefault("retries", 3)
+
+    # Proxy support if configured
+    proxy = os.environ.get("YT_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+    if proxy:
+        opts["proxy"] = proxy
+
+    # Cookies if provided
+    cookie_file = _get_cookie_file_path()
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+
+    return opts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Audio Transcoder (Lossless FLAC -> 256 kbps AAC M4A)
+#  Audio Transcoder (Lossless FLAC/Opus/WAV -> 256 kbps AAC M4A)
 # ─────────────────────────────────────────────────────────────────────────────
 def _transcode_audio_to_m4a(input_path: str, output_path: str, bitrate: str = "256k") -> bool:
     """
-    Transcode lossless studio audio (FLAC/WAV) to optimized 256 kbps AAC M4A.
+    Transcode audio to optimized 256 kbps AAC M4A.
     Includes +faststart for instant mobile streaming.
     """
     if shutil.which("ffmpeg"):
@@ -187,14 +272,17 @@ def _clean_track_title(raw_title: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 def _resolve_spotify_track(title: str, artist: str = "", spotify_url: str = None) -> tuple[dict | None, str | None]:
     """
-    Search Spotify's official catalog using SpotifyMetadataClient.
+    Search Spotify's catalog using SpotifyMetadataClient.
     Returns (track_metadata_dict, spotify_url) or (None, None).
     """
     if not SPOTIFLAC_AVAILABLE:
-        log.error("SpotiFLAC module is not available in Python environment.")
         return None, None
 
-    sm = SpotifyMetadataClient()
+    try:
+        sm = SpotifyMetadataClient()
+    except Exception as e:
+        log.warning("Could not initialize SpotifyMetadataClient: %s", e)
+        return None, None
 
     # If direct Spotify URL provided
     if spotify_url and "spotify.com/track/" in spotify_url:
@@ -216,7 +304,6 @@ def _resolve_spotify_track(title: str, artist: str = "", spotify_url: str = None
         except Exception as e:
             log.warning("Direct Spotify track fetch failed: %s", e)
 
-    # Search Spotify catalog
     clean_t = _clean_track_title(title)
     clean_a = _clean_track_title(artist)
     queries = [
@@ -254,7 +341,7 @@ def _resolve_spotify_track(title: str, artist: str = "", spotify_url: str = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SpotiFLAC Lossless Audio Downloader
+#  SpotiFLAC Lossless Audio Downloader (Tier 1)
 # ─────────────────────────────────────────────────────────────────────────────
 def _download_via_spotiflac(spotify_url: str, output_dir: str) -> tuple[str | None, int]:
     """
@@ -273,7 +360,7 @@ def _download_via_spotiflac(spotify_url: str, output_dir: str) -> tuple[str | No
             downloaded.extend(Path(output_dir).glob(ext))
 
         if not downloaded:
-            log.error("SpotiFLAC could not find or download audio from lossless providers.")
+            log.info("SpotiFLAC found no lossless stream in Tidal/Qobuz catalog.")
             return None, 0
 
         source_file = str(downloaded[0])
@@ -287,7 +374,109 @@ def _download_via_spotiflac(spotify_url: str, output_dir: str) -> tuple[str | No
             return source_file, _get_audio_duration_ms(source_file)
 
     except Exception as e:
-        log.error("SpotiFLAC download execution encountered an error: %s", e)
+        log.warning("SpotiFLAC download encountered exception: %s", e)
+
+    return None, 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  YouTube Downloader & Search (Tier 2 Fallback)
+# ─────────────────────────────────────────────────────────────────────────────
+def _search_youtube(title: str, artist: str) -> tuple[str | None, str | None, str | None]:
+    """
+    Search YouTube for best audio match.
+    Returns (watch_url, thumbnail_url, video_id).
+    """
+    queries = [
+        f"{artist} {title} official audio".strip(),
+        f"{title} {artist} audio".strip(),
+        f"{title} {artist}".strip(),
+    ]
+
+    ydl_opts = _get_ydl_opts({
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "skip_download": True,
+    })
+
+    for q in queries:
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch1:{q}", download=False)
+                entries = info.get("entries") or []
+                if entries and entries[0]:
+                    e = entries[0]
+                    vid_id = e.get("id")
+                    if vid_id:
+                        watch_url = f"https://www.youtube.com/watch?v={vid_id}"
+                        thumb_url = e.get("thumbnail") or f"https://i.ytimg.com/vi/{vid_id}/maxresdefault.jpg"
+                        log.info("YouTube search found match for query '%s': %s", q, vid_id)
+                        return watch_url, thumb_url, vid_id
+        except Exception as e:
+            log.warning("YouTube search query '%s' failed: %s", q, e)
+
+    return None, None, None
+
+
+def _fetch_ytmusic_thumbnail(title: str, artist: str) -> str | None:
+    """Scrape YouTube Music search page for high-res official audio artwork."""
+    query = f"{artist} {title} official audio".strip()
+    url = YT_MUSIC_SEARCH + urllib.parse.quote(query)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', resp.text)
+            if ids:
+                return f"https://i.ytimg.com/vi/{ids[0]}/maxresdefault.jpg"
+    except Exception:
+        pass
+    return None
+
+
+def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int]:
+    """
+    Download audio via yt-dlp with anti-blocking configuration and transcode to 256k AAC M4A.
+    Returns (transcoded_m4a_path, duration_ms) or (None, 0).
+    """
+    out_tpl = os.path.join(output_dir, "%(title)s.%(ext)s")
+    ydl_opts = _get_ydl_opts({
+        "format": "bestaudio/best",
+        "outtmpl": out_tpl,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+    })
+
+    try:
+        log.info("Downloading audio via yt-dlp from: %s", yt_url)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(yt_url, download=True)
+            duration_sec = info.get("duration") or 0
+            duration_ms = int(float(duration_sec) * 1000) if duration_sec else 0
+
+        # Locate downloaded file
+        downloaded = [f for f in Path(output_dir).iterdir() if f.is_file()]
+        if not downloaded:
+            log.error("yt-dlp downloaded no files into directory.")
+            return None, 0
+
+        source_file = str(downloaded[0])
+        transcoded_m4a = os.path.join(output_dir, "transcoded_yt_audio.m4a")
+
+        if _transcode_audio_to_m4a(source_file, transcoded_m4a, bitrate="256k"):
+            dur = _get_audio_duration_ms(transcoded_m4a) or duration_ms
+            return transcoded_m4a, dur
+        elif source_file.endswith(".m4a"):
+            dur = _get_audio_duration_ms(source_file) or duration_ms
+            return source_file, dur
+
+    except Exception as e:
+        log.error("YouTube download failed: %s", e)
 
     return None, 0
 
@@ -301,26 +490,30 @@ def _sanitize_public_id(raw: str) -> str:
 
 
 def _upload_square_cover(image_url: str | None, title: str, artist: str) -> tuple[str, str]:
-    """Upload cover artwork to Cloudinary with square crop."""
+    """Upload cover artwork to Cloudinary with square crop (640x640)."""
     if not image_url:
         return "", ""
 
     public_id = _sanitize_public_id(f"covers/{artist}/{title}")
     log.info("Uploading album cover to Cloudinary: %s", public_id)
 
-    result = cloudinary.uploader.upload(
-        image_url,
-        public_id=public_id,
-        overwrite=True,
-        transformation=[{
-            "width":   640,
-            "height":  640,
-            "crop":    "fill",
-            "gravity": "center",
-        }],
-        format="jpg",
-    )
-    return result["secure_url"], public_id
+    try:
+        result = cloudinary.uploader.upload(
+            image_url,
+            public_id=public_id,
+            overwrite=True,
+            transformation=[{
+                "width": 640,
+                "height": 640,
+                "crop": "fill",
+                "gravity": "center",
+            }],
+            format="jpg",
+        )
+        return result["secure_url"], public_id
+    except Exception as e:
+        log.warning("Album cover upload to Cloudinary failed: %s", e)
+        return image_url, ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -334,7 +527,7 @@ def _normalize(s: str) -> str:
     return s
 
 
-def _find_existing_track(title: str, artist: str, spotify_id: str = "") -> str | None:
+def _find_existing_track(title: str, artist: str, spotify_id: str = "", video_id: str = "") -> str | None:
     """Check Firestore tracks collection for duplicates."""
     if not db:
         return None
@@ -348,7 +541,16 @@ def _find_existing_track(title: str, artist: str, spotify_id: str = "") -> str |
             log.info("Dedup hit (spotify_id): %s", snap[0].id)
             return snap[0].id
 
-    title_lc  = _normalize(title)
+    if video_id:
+        snap = (db.collection(TRACKS_COL)
+                  .where("video_id", "==", video_id)
+                  .limit(1)
+                  .get())
+        if snap:
+            log.info("Dedup hit (video_id): %s", snap[0].id)
+            return snap[0].id
+
+    title_lc = _normalize(title)
     artist_lc = _normalize(artist)
     alias_key = f"{title_lc}||{artist_lc}"
 
@@ -381,48 +583,52 @@ def _create_firestore_track(
     audio_public_id: str,
     cover_url: str,
     cover_public_id: str,
+    source: str = "spotiflac",
+    quality: str = "256k_aac_studio_master",
+    video_id: str = "",
 ) -> str:
     """Create a track document in Firestore."""
     if not db:
         log.warning("Firestore not initialized. Returning dummy doc id.")
         return f"track_{int(time.time())}"
 
-    title  = meta.get("title", "Unknown Title")
+    title = meta.get("title", "Unknown Title")
     artist = meta.get("artist", "Unknown Artist")
     doc_ref = db.collection(TRACKS_COL).document()
 
     alias_keys = [f"{_normalize(title)}||{_normalize(artist)}"]
 
     doc_data = {
-        # Core fields
-        "title":           title,
-        "artist":          artist,
-        "album":           meta.get("album", ""),
-        "secure_url":      secure_url,
+        # Core player fields
+        "title": title,
+        "artist": artist,
+        "album": meta.get("album", ""),
+        "secure_url": secure_url,
         "audio_public_id": audio_public_id,
-        "imageUrl":        cover_url,
+        "imageUrl": cover_url,
         "cover_public_id": cover_public_id,
-        "duration_ms":     meta.get("duration_ms", 0),
-        "trackNumber":     meta.get("track_number", 1),
-        "isExplicit":      meta.get("is_explicit", False),
+        "duration_ms": meta.get("duration_ms", 0),
+        "trackNumber": meta.get("track_number", 1),
+        "isExplicit": meta.get("is_explicit", False),
 
-        # SpotiFLAC Metadata fields
-        "spotify_id":      meta.get("spotify_id", ""),
-        "spotify_url":     meta.get("spotify_url", ""),
-        "meta_source":     "spotiflac",
-        "audio_quality":   "256k_aac_studio_master",
+        # Source & quality flags
+        "meta_source": source,
+        "audio_quality": quality,
+        "spotify_id": meta.get("spotify_id", ""),
+        "spotify_url": meta.get("spotify_url", ""),
+        "video_id": video_id or meta.get("video_id", ""),
 
         # Deduplication fields
-        "title_lc":        _normalize(title),
-        "artist_lc":       _normalize(artist),
-        "alias_keys":      alias_keys,
+        "title_lc": _normalize(title),
+        "artist_lc": _normalize(artist),
+        "alias_keys": alias_keys,
 
         # Timestamps
-        "addedAt":         firestore.SERVER_TIMESTAMP,
+        "addedAt": firestore.SERVER_TIMESTAMP,
     }
 
     doc_ref.set(doc_data)
-    log.info("Firestore track created: %s (source=spotiflac)", doc_ref.id)
+    log.info("Firestore track created: %s (source=%s, quality=%s)", doc_ref.id, source, quality)
     return doc_ref.id
 
 
@@ -430,10 +636,13 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
     """Link track to a user playlist in Firestore."""
     if not db or not playlist_id:
         return
-    db.collection(PLAYLISTS_COL).document(playlist_id).update({
-        "trackIds": firestore.ArrayUnion([track_id])
-    })
-    log.info("Linked track %s → playlist %s", track_id, playlist_id)
+    try:
+        db.collection(PLAYLISTS_COL).document(playlist_id).update({
+            "trackIds": firestore.ArrayUnion([track_id])
+        })
+        log.info("Linked track %s -> playlist %s", track_id, playlist_id)
+    except Exception as e:
+        log.warning("Failed to link track to playlist: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -441,124 +650,269 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/ping", methods=["GET"])
 def ping():
+    cookie_present = bool(_get_cookie_file_path())
     return jsonify({
         "status": "online",
-        "engine": "SpotiFLAC (Lossless Studio)",
-        "spotiflac_available": SPOTIFLAC_AVAILABLE
+        "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
+        "spotiflac_available": SPOTIFLAC_AVAILABLE,
+        "youtube_available": True,
+        "youtube_cookies_loaded": cookie_present
     }), 200
 
 
 @app.route("/search", methods=["GET"])
 def search():
     """
-    Search official Spotify catalog directly via SpotifyMetadataClient.
+    Search endpoint supporting the Flutter app's Search and Ingestion views.
+    Returns YouTube video matches with rich metadata (title, artist, thumbnail, duration).
     """
     q = (request.args.get("q") or "").strip()
     if not q:
         return jsonify({"results": []})
 
-    log.info("Spotify catalog search query: '%s'", q)
+    log.info("Catalog search query: '%s'", q)
 
-    if not SPOTIFLAC_AVAILABLE:
-        return jsonify({"error": "SpotiFLAC module not loaded", "results": []}), 500
+    ydl_opts = _get_ydl_opts({
+        "quiet": True,
+        "extract_flat": True,
+        "no_warnings": True,
+        "skip_download": True,
+    })
 
     try:
-        sm = SpotifyMetadataClient()
-        res = sm.search(q)
-        tracks = res.get("tracks", []) if isinstance(res, dict) else []
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch10:{q}", download=False)
 
+        entries = info.get("entries") or []
         results = []
-        for t in tracks:
-            spotify_id = getattr(t, "id", "")
-            duration_ms = getattr(t, "duration_ms", 0)
-            cover_url = getattr(t, "cover_url", "") or ""
-            external_url = getattr(t, "external_url", "") or f"https://open.spotify.com/track/{spotify_id}"
+        for e in entries:
+            if not e:
+                continue
+            vid = e.get("id") or ""
+            if not vid:
+                continue
+            title = e.get("title") or ""
+            artist = e.get("uploader") or e.get("channel") or ""
+            thumb = e.get("thumbnail") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+            duration = int(e.get("duration") or 0)
 
             results.append({
-                "video_id":      spotify_id, # Compatibility with Flutter model
-                "spotify_id":    spotify_id,
-                "title":         getattr(t, "title", ""),
-                "artist":        getattr(t, "artists", ""),
-                "album":         getattr(t, "album", ""),
-                "thumbnail_url": cover_url,
-                "cover_url":     cover_url,
-                "duration_sec":  int(duration_ms / 1000) if duration_ms else 0,
-                "spotify_url":   external_url
+                "video_id": vid,
+                "title": title,
+                "artist": artist,
+                "thumbnail_url": thumb,
+                "cover_url": thumb,
+                "duration_sec": duration,
+                "source": "youtube"
             })
 
-        log.info("Spotify search returned %d results for '%s'", len(results), q)
+        log.info("Search returned %d results for '%s'", len(results), q)
         return jsonify({"results": results})
 
     except Exception as exc:
-        log.exception("Spotify catalog search failed: %s", exc)
+        log.exception("Search failed: %s", exc)
         return jsonify({"error": str(exc), "results": []}), 500
+
+
+@app.route("/preview", methods=["GET"])
+def preview():
+    """
+    Direct audio preview streaming URL endpoint for Flutter client.
+    """
+    video_id = (request.args.get("video_id") or "").strip()
+    if not video_id:
+        return jsonify({"error": "video_id is required"}), 400
+
+    log.info("Generating preview URL for video_id: %s", video_id)
+    ydl_opts = _get_ydl_opts({
+        "format": "m4a/bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    })
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            url = info.get("url")
+            return jsonify({"url": url})
+    except Exception as exc:
+        log.exception("Preview generation failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/ingest", methods=["POST"])
 def ingest():
     """
-    Pure SpotiFLAC Ingestion Pipeline:
-    1. Deduplicate check in Firestore
-    2. Resolve Spotify official track metadata & URL
-    3. Download lossless studio audio via SpotiFLAC
-    4. Transcode FLAC -> 256 kbps AAC M4A
-    5. Upload audio & album artwork to Cloudinary
-    6. Save to Firestore tracks collection
-    7. Link to playlist if specified
+    Hybrid Ingestion Pipeline:
+    1. Check Deduplication in Firestore.
+    2. If video_id passed directly -> Ingest via YouTube immediately.
+    3. If title/artist or spotify_url passed:
+       - Tier 1: Try SpotiFLAC (Official Spotify metadata + Tidal/Qobuz Studio Lossless).
+       - Tier 2: If SpotiFLAC fails or song is not on Tidal/Qobuz (regional, Malayalam, indie),
+                 smoothly fall back to YouTube without raising an error.
+    4. Transcode to 256k AAC M4A (+faststart) & upload to Cloudinary.
+    5. Save track in Firestore & link to playlist.
     """
     data = request.get_json(force=True)
-    title        = (data.get("title")       or "").strip()
-    artist       = (data.get("artist")      or "").strip()
-    playlist_id  = (data.get("playlist_id") or "").strip()
-    spotify_url  = (data.get("spotify_url") or "").strip()
+    title = (data.get("title") or "").strip()
+    artist = (data.get("artist") or "").strip()
+    playlist_id = (data.get("playlist_id") or "").strip()
+    spotify_url = (data.get("spotify_url") or "").strip()
+    video_id = (data.get("video_id") or "").strip()
+    thumbnail_url = (data.get("thumbnail_url") or data.get("cover_url") or "").strip()
     bypass_dedup = data.get("bypass_dedup") == True
 
-    if not title and not spotify_url:
-        return jsonify({"error": "title or spotify_url is required"}), 400
+    if not title and not spotify_url and not video_id:
+        return jsonify({"error": "title, spotify_url, or video_id is required"}), 400
 
-    log.info("Ingesting with SpotiFLAC: '%s' by '%s' (spotify_url=%s, bypass_dedup=%s)", title, artist, spotify_url or "none", bypass_dedup)
+    log.info(
+        "Ingest request: title='%s', artist='%s', video_id='%s', spotify_url='%s', bypass_dedup=%s",
+        title, artist, video_id or "none", spotify_url or "none", bypass_dedup
+    )
 
     try:
+        # ─────────────────────────────────────────────────────────────────────
+        #  PATH 1: Direct Video ID provided (from Flutter YouTube search)
+        # ─────────────────────────────────────────────────────────────────────
+        if video_id:
+            # Deduplication
+            if not bypass_dedup:
+                existing_id = _find_existing_track(title, artist, video_id=video_id)
+                if existing_id:
+                    log.info("Dedup hit for video_id %s -> track %s", video_id, existing_id)
+                    if playlist_id:
+                        _link_to_playlist(playlist_id, existing_id)
+                    return jsonify({
+                        "status": "duplicate",
+                        "track_id": existing_id,
+                        "message": f"Song already exists (id={existing_id}). Linked to playlist."
+                    })
+
+            yt_url = f"https://www.youtube.com/watch?v={video_id}"
+            yt_thumb = thumbnail_url or f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                m4a_path, duration_ms = _download_via_youtube(yt_url, tmpdir)
+                if not m4a_path or not os.path.exists(m4a_path):
+                    return jsonify({"error": "Could not download YouTube audio for video_id: " + video_id}), 500
+
+                clean_t = title or "YouTube Track"
+                clean_a = artist or "Unknown Artist"
+
+                audio_pid = _sanitize_public_id(f"audio/{clean_a}/{clean_t}")
+                log.info("Uploading audio to Cloudinary: %s", audio_pid)
+                audio_res = cloudinary.uploader.upload(
+                    m4a_path,
+                    resource_type="video",
+                    public_id=audio_pid,
+                    overwrite=True,
+                    format="m4a",
+                )
+                audio_url = audio_res["secure_url"]
+
+                cover_url, cover_pid = _upload_square_cover(yt_thumb, clean_t, clean_a)
+
+                meta = {
+                    "title": clean_t,
+                    "artist": clean_a,
+                    "album": "",
+                    "duration_ms": duration_ms,
+                    "video_id": video_id,
+                }
+                track_id = _create_firestore_track(
+                    meta=meta,
+                    secure_url=audio_url,
+                    audio_public_id=audio_pid,
+                    cover_url=cover_url,
+                    cover_public_id=cover_pid,
+                    source="youtube",
+                    quality="256k_aac_youtube",
+                    video_id=video_id
+                )
+
+                if playlist_id:
+                    _link_to_playlist(playlist_id, track_id)
+
+                return jsonify({
+                    "status": "created",
+                    "track_id": track_id,
+                    "secure_url": audio_url,
+                    "cover_url": cover_url,
+                    "source": "youtube",
+                    "metadata": meta,
+                })
+
+        # ─────────────────────────────────────────────────────────────────────
+        #  PATH 2: Title / Artist or Spotify URL (Hybrid SpotiFLAC + YouTube)
+        # ─────────────────────────────────────────────────────────────────────
         # 1. Resolve Spotify Metadata
-        meta, resolved_spotify_url = _resolve_spotify_track(title, artist, spotify_url=spotify_url)
-        if not meta or not resolved_spotify_url:
-            return jsonify({
-                "error": f"Song '{title} - {artist}' was not found in the Spotify catalog. SpotiFLAC requires a valid Spotify track."
-            }), 404
+        spotify_meta, resolved_spotify_url = _resolve_spotify_track(title, artist, spotify_url=spotify_url)
+        if spotify_meta:
+            title = spotify_meta["title"]
+            artist = spotify_meta["artist"]
+            spotify_id = spotify_meta.get("spotify_id", "")
+        else:
+            spotify_id = ""
 
-        title = meta["title"]
-        artist = meta["artist"]
-        spotify_id = meta.get("spotify_id", "")
-
-        # 2. Check Deduplication
+        # 2. Deduplication check
         if not bypass_dedup:
             existing_id = _find_existing_track(title, artist, spotify_id=spotify_id)
             if existing_id:
-                log.info("Duplicate found: %s — skipping download.", existing_id)
+                log.info("Duplicate hit for '%s - %s' -> track %s", title, artist, existing_id)
                 if playlist_id:
                     _link_to_playlist(playlist_id, existing_id)
                 return jsonify({
-                    "status":   "duplicate",
+                    "status": "duplicate",
                     "track_id": existing_id,
-                    "message":  f"Song already exists (id={existing_id}). Linked to playlist."
+                    "message": f"Song already exists (id={existing_id}). Linked to playlist."
                 })
 
-        # 3. SpotiFLAC Lossless Download & Transcoding
+        # 3. Attempt Tier 1: SpotiFLAC (Studio Lossless)
+        downloaded_source = None
+        duration_ms = 0
+        used_engine = None
+
         with tempfile.TemporaryDirectory() as tmpdir:
-            m4a_path, duration_ms = _download_via_spotiflac(resolved_spotify_url, tmpdir)
-            if not m4a_path or not os.path.exists(m4a_path):
-                return jsonify({
-                    "error": f"SpotiFLAC could not find or download lossless audio for '{title} by {artist}' from streaming providers (Tidal/Qobuz)."
-                }), 404
+            if resolved_spotify_url and SPOTIFLAC_AVAILABLE:
+                log.info("Tier 1: Attempting SpotiFLAC lossless engine for '%s - %s'...", title, artist)
+                m4a_path, dur = _download_via_spotiflac(resolved_spotify_url, tmpdir)
+                if m4a_path and os.path.exists(m4a_path):
+                    log.info("Tier 1 OK: SpotiFLAC lossless studio audio obtained ✓")
+                    downloaded_source = m4a_path
+                    duration_ms = dur
+                    used_engine = "spotiflac"
 
-            if duration_ms:
-                meta["duration_ms"] = duration_ms
+            # 4. Attempt Tier 2: YouTube Fallback (Regional, Malayalam, or unstreamed tracks)
+            if not downloaded_source:
+                log.info(
+                    "Tier 1 (SpotiFLAC) unavailable or track not in lossless catalog for '%s - %s'. "
+                    "Engaging Tier 2 YouTube Fallback...", title, artist
+                )
+                yt_url, yt_thumb, found_vid = _search_youtube(title, artist)
+                if not yt_url:
+                    return jsonify({
+                        "error": f"Track '{title} - {artist}' could not be resolved on Spotify lossless catalog or YouTube."
+                    }), 404
 
-            # 4. Upload Audio to Cloudinary
+                m4a_path, dur = _download_via_youtube(yt_url, tmpdir)
+                if not m4a_path or not os.path.exists(m4a_path):
+                    return jsonify({
+                        "error": f"Failed to download audio for '{title} - {artist}' via YouTube fallback."
+                    }), 500
+
+                log.info("Tier 2 OK: YouTube fallback audio downloaded & transcoded ✓")
+                downloaded_source = m4a_path
+                duration_ms = dur
+                used_engine = "youtube_fallback"
+
+                if not thumbnail_url:
+                    thumbnail_url = yt_thumb or _fetch_ytmusic_thumbnail(title, artist)
+
+            # 5. Upload Audio to Cloudinary
             audio_pid = _sanitize_public_id(f"audio/{artist}/{title}")
-            log.info("Uploading audio to Cloudinary: %s (%d KB)", audio_pid, os.path.getsize(m4a_path) // 1024)
+            log.info("Uploading audio to Cloudinary: %s (%d KB)", audio_pid, os.path.getsize(downloaded_source) // 1024)
             audio_res = cloudinary.uploader.upload(
-                m4a_path,
+                downloaded_source,
                 resource_type="video",
                 public_id=audio_pid,
                 overwrite=True,
@@ -566,39 +920,57 @@ def ingest():
             )
             audio_url = audio_res["secure_url"]
 
-        # 5. Upload Album Cover Artwork to Cloudinary
-        cover_url, cover_pid = _upload_square_cover(meta.get("cover_url"), title, artist)
+        # 6. Upload Artwork (Prefers Spotify official high-res cover, falls back to YouTube)
+        best_cover = (spotify_meta.get("cover_url") if spotify_meta else None) or thumbnail_url
+        cover_url, cover_pid = _upload_square_cover(best_cover, title, artist)
 
-        # 6. Save Record in Firestore
+        # 7. Save to Firestore
+        track_meta = {
+            "title": title,
+            "artist": artist,
+            "album": (spotify_meta.get("album") if spotify_meta else "") or "",
+            "duration_ms": duration_ms,
+            "spotify_id": spotify_id,
+            "spotify_url": resolved_spotify_url or "",
+            "video_id": video_id or (found_vid if used_engine == "youtube_fallback" else ""),
+        }
+        quality_str = "256k_aac_studio_master" if used_engine == "spotiflac" else "256k_aac_youtube_fallback"
         track_id = _create_firestore_track(
-            meta=meta,
+            meta=track_meta,
             secure_url=audio_url,
             audio_public_id=audio_pid,
             cover_url=cover_url,
             cover_public_id=cover_pid,
+            source=used_engine,
+            quality=quality_str,
+            video_id=track_meta.get("video_id", "")
         )
 
-        # 7. Link to Playlist
+        # 8. Link to Playlist
         if playlist_id:
             _link_to_playlist(playlist_id, track_id)
 
         return jsonify({
-            "status":      "created",
-            "track_id":    track_id,
-            "secure_url":  audio_url,
-            "cover_url":   cover_url,
-            "metadata":    meta,
+            "status": "created",
+            "track_id": track_id,
+            "secure_url": audio_url,
+            "cover_url": cover_url,
+            "engine": used_engine,
+            "metadata": track_meta,
         })
 
     except Exception as exc:
-        log.exception("Pure SpotiFLAC Ingestion failed: %s", exc)
+        log.exception("Ingestion failed: %s", exc)
         return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/delete", methods=["POST"])
 def delete_track():
     """
-    Delete audio and artwork from Cloudinary, remove from all playlists, and delete Firestore record.
+    Complete track deletion:
+    1. Cloudinary audio + cover destruction
+    2. Firestore playlist references cleanup
+    3. Firestore track document deletion
     """
     data = request.get_json(force=True)
     track_id = data.get("track_id")
@@ -660,6 +1032,9 @@ def delete_track():
         return jsonify({"error": str(e)}), 500
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Local Dev Server
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
