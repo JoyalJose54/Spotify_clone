@@ -116,7 +116,7 @@ YT_MUSIC_SEARCH = "https://music.youtube.com/search?q="
 _COOKIES_TMP_FILE = None
 
 def _sanitize_and_save_cookies(raw_text: str) -> str | None:
-    """Sanitize cookies by stripping expired/mismatched LOGIN_INFO, malformed lines, and ensuring Netscape header with tabs."""
+    """Sanitize cookies: normalize whitespace to literal tabs, filter malformed lines, and ensure Netscape header."""
     global _COOKIES_TMP_FILE
     try:
         lines = raw_text.splitlines()
@@ -127,8 +127,6 @@ def _sanitize_and_save_cookies(raw_text: str) -> str | None:
                 continue
             if line_str.startswith("#"):
                 clean_lines.append(line_str)
-                continue
-            if "LOGIN_INFO" in line_str:
                 continue
             # Netscape cookie format has 7 columns separated by tabs or whitespace
             parts = re.split(r"\s+", line_str)
@@ -272,7 +270,7 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     opts = base_opts.copy()
 
     # Enable automated EJS challenge solver
-    opts.setdefault("remote_components", ["ejs:github"])
+    opts.setdefault("remote_components", {"ejs:github"})
 
     # Configure JS runtime if available (node, deno, etc.)
     js_bin = _ensure_js_runtime()
@@ -578,17 +576,16 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
         }],
     }
 
-    strategies = [
-        ("Android Client (SABR-Bypass)", {
-            **base_ydl,
-            "extractor_args": {"youtube": {"player_client": ["android"]}}
-        }),
-    ]
-
+    strategies = []
     cookie_file = _get_cookie_file_path()
     if cookie_file:
-        strat2 = _get_ydl_opts(base_ydl.copy())
-        strategies.append(("Authenticated Cookie Mode", strat2))
+        strat_auth = _get_ydl_opts(base_ydl.copy())
+        strategies.append(("Authenticated Cookie Mode (EJS)", strat_auth))
+
+    strategies.append(("Android Client (SABR-Bypass)", {
+        **base_ydl,
+        "extractor_args": {"youtube": {"player_client": ["android"]}}
+    }))
 
     strategies.append(("iOS / TV Fallback", {
         **base_ydl,
@@ -804,7 +801,7 @@ def ping():
     js_bin = _ensure_js_runtime()
     return jsonify({
         "status": "online",
-        "version": "1.3.2",
+        "version": "1.3.3",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
