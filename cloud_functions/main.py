@@ -797,17 +797,41 @@ def _link_to_playlist(playlist_id: str, track_id: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/ping", methods=["GET"])
 def ping():
-    cookie_present = bool(_get_cookie_file_path())
+    cookie_path = _get_cookie_file_path()
+    cookie_present = bool(cookie_path)
+    cookie_has_login = False
+    cookie_has_sid = False
+    cookie_size = 0
+    if cookie_path and os.path.exists(cookie_path):
+        cookie_size = os.path.getsize(cookie_path)
+        try:
+            with open(cookie_path, "r", errors="ignore") as f:
+                content = f.read()
+            cookie_has_login = "LOGIN_INFO" in content
+            cookie_has_sid = "\tSID\t" in content or " SID " in content
+        except Exception:
+            pass
+
     js_bin = _ensure_js_runtime()
+    cur_dir = os.path.dirname(__file__)
+    dir_files = os.listdir(cur_dir) if os.path.exists(cur_dir) else []
+
     return jsonify({
         "status": "online",
-        "version": "1.3.3",
+        "version": "1.3.4",
         "engine": "Hybrid (SpotiFLAC Studio Lossless + YouTube Regional Fallback)",
         "spotiflac_available": SPOTIFLAC_AVAILABLE,
         "youtube_available": True,
         "youtube_cookies_loaded": cookie_present,
+        "cookie_path": cookie_path,
+        "cookie_size": cookie_size,
+        "cookie_has_sid": cookie_has_sid,
+        "cookie_has_login": cookie_has_login,
+        "env_youtube_cookies_len": len(os.environ.get("YOUTUBE_COOKIES", "")),
+        "env_youtube_cookies_b64_len": len(os.environ.get("YOUTUBE_COOKIES_BASE64", "")),
         "js_runtime_available": bool(js_bin),
         "js_runtime_path": js_bin,
+        "dir_files": dir_files,
     }), 200
 
 
