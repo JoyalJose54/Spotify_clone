@@ -672,26 +672,6 @@ def ping():
     }), 200
 
 
-@app.route("/debug_yt", methods=["GET"])
-def debug_yt():
-    v = request.args.get("v", "L5Z-1JlL5ss")
-    yt_url = f"https://www.youtube.com/watch?v={v}"
-    results = {}
-    clients_to_check = ["android", "visionos", "android_vr", "tv", "mweb", "ios", "web_safari", "web"]
-    for c in clients_to_check:
-        try:
-            opts = {
-                "quiet": True,
-                "skip_download": True,
-                "extractor_args": {"youtube": {"player_client": [c]}}
-            }
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(yt_url, download=False)
-                fmts = len(info.get("formats", []))
-                results[c] = f"SUCCESS: {fmts} formats"
-        except Exception as e:
-            results[c] = f"ERROR: {str(e)[:120]}"
-    return jsonify({"video_id": v, "results": results}), 200
 
 
 @app.route("/search", methods=["GET"])
