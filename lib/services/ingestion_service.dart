@@ -9,11 +9,13 @@ import 'firebase_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 //  Backend base URL – Python backend running on laptop (cloud_functions/main.py)
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'http://10.0.2.2:8080');
+const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'https://spotify-clone-uehl.onrender.com');
 
 class IngestionResult {
   final bool   success;
   final bool   isDuplicate;
+  final bool   fallbackUsed;
+  final String engine;
   final String trackId;
   final String secureUrl;
   final String coverUrl;
@@ -23,6 +25,8 @@ class IngestionResult {
   const IngestionResult({
     required this.success,
     this.isDuplicate  = false,
+    this.fallbackUsed = false,
+    this.engine       = '',
     this.trackId      = '',
     this.secureUrl    = '',
     this.coverUrl     = '',
@@ -83,9 +87,6 @@ class CsvEntryState {
 class IngestionService {
   static final _db = FirebaseFirestore.instance;
 
-  static const _shazamKeys = [
-    String.fromEnvironment('SHAZAM_KEY', defaultValue: "YOUR_SHAZAM_API_KEY"),
-  ];
 
   // ── Backend URL (reads from SharedPreferences so user can override) ──────
   static Future<String> _getBase() async {
@@ -105,7 +106,7 @@ class IngestionService {
       final base = await _getBase();
       final resp = await http
           .get(Uri.parse('$base/ping'))
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 15));
       return resp.statusCode == 200;
     } catch (_) {
       return false;
@@ -146,14 +147,18 @@ class IngestionService {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
 
       if (resp.statusCode == 200) {
-        final isDup = data['duplicate'] == true;
+        final isDup = data['duplicate'] == true || data['status'] == 'duplicate';
+        final engine = data['engine'] as String? ?? (data['source'] as String? ?? '');
+        final fallbackUsed = data['fallback_used'] == true || engine == 'youtube_fallback';
         return IngestionResult(
-          success:     true,
-          isDuplicate: isDup,
-          trackId:     data['track_id']   as String? ?? '',
-          secureUrl:   data['secure_url'] as String? ?? '',
-          coverUrl:    data['cover_url']  as String? ?? '',
-          message:     isDup ? 'Already in library' : 'Added successfully!',
+          success:      true,
+          isDuplicate:  isDup,
+          fallbackUsed: fallbackUsed,
+          engine:       engine,
+          trackId:      data['track_id']   as String? ?? '',
+          secureUrl:    data['secure_url'] as String? ?? '',
+          coverUrl:     data['cover_url']  as String? ?? '',
+          message:      data['message']    as String? ?? (isDup ? 'Already in library' : 'Added successfully!'),
         );
       } else {
         return IngestionResult.error(data['error'] as String? ?? 'Backend error ${resp.statusCode}');

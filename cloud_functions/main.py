@@ -173,7 +173,6 @@ def _get_ydl_opts(base_opts: dict) -> dict:
     opts.setdefault("extractor_args", {
         "youtube": {
             "player_client": ["android", "web"],
-            "player_skip": ["webpage", "configs"],
         }
     })
 
@@ -443,13 +442,20 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
     Download audio via yt-dlp with anti-blocking configuration and transcode to 256k AAC M4A.
     Returns (transcoded_m4a_path, duration_ms) or (None, 0).
     """
-    out_tpl = os.path.join(output_dir, "%(title)s.%(ext)s")
+    out_tpl = os.path.join(output_dir, "%(id)s.%(ext)s")
     ydl_opts = _get_ydl_opts({
         "format": "bestaudio/best",
         "outtmpl": out_tpl,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
+        "windowsfilenames": True,
+        "restrictfilenames": True,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "m4a",
+            "preferredquality": "256",
+        }],
     })
 
     try:
@@ -459,15 +465,19 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
             duration_sec = info.get("duration") or 0
             duration_ms = int(float(duration_sec) * 1000) if duration_sec else 0
 
-        # Locate downloaded file
-        downloaded = [f for f in Path(output_dir).iterdir() if f.is_file()]
+        # Locate downloaded file (look for .m4a first)
+        m4a_files = list(Path(output_dir).glob("*.m4a"))
+        all_files = [f for f in Path(output_dir).iterdir() if f.is_file()]
+        downloaded = m4a_files or all_files
+
         if not downloaded:
             log.error("yt-dlp downloaded no files into directory.")
             return None, 0
 
         source_file = str(downloaded[0])
-        transcoded_m4a = os.path.join(output_dir, "transcoded_yt_audio.m4a")
+        log.info("yt-dlp produced file: %s (%d KB)", source_file, os.path.getsize(source_file) // 1024)
 
+        transcoded_m4a = os.path.join(output_dir, "transcoded_yt_audio.m4a")
         if _transcode_audio_to_m4a(source_file, transcoded_m4a, bitrate="256k"):
             dur = _get_audio_duration_ms(transcoded_m4a) or duration_ms
             return transcoded_m4a, dur
@@ -476,7 +486,7 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
             return source_file, dur
 
     except Exception as e:
-        log.error("YouTube download failed: %s", e)
+        log.exception("YouTube download failed: %s", e)
 
     return None, 0
 
@@ -956,6 +966,8 @@ def ingest():
             "secure_url": audio_url,
             "cover_url": cover_url,
             "engine": used_engine,
+            "fallback_used": (used_engine == "youtube_fallback"),
+            "message": "Spotify lossless unavailable — Retrieved via YouTube fallback ⚡" if used_engine == "youtube_fallback" else "Studio lossless audio added via SpotiFLAC ✓",
             "metadata": track_meta,
         })
 

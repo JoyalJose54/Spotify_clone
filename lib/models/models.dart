@@ -50,7 +50,8 @@ class Song {
   // ── Firestore deserialization ──────────────────────────────────────────────
   // Tolerates multiple field-name conventions from different upload scripts.
   factory Song.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    final raw = doc.data();
+    final d = (raw != null && raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
 
     // Audio URL: prefer secure_url (Cloudinary), fall back to legacy names
     final streamUrl =
@@ -69,12 +70,36 @@ class Song {
 
     // Duration: duration_ms (int ms) OR duration (float seconds)
     int durationMs = 0;
-    if (d['duration_ms'] != null) {
+    if (d['duration_ms'] != null && d['duration_ms'] is num) {
       durationMs = (d['duration_ms'] as num).toInt();
-    } else if (d['durationMs'] != null) durationMs = (d['durationMs'] as num).toInt();
-    else if (d['duration']   != null) durationMs = ((d['duration'] as num) * 1000).toInt();
+    } else if (d['durationMs'] != null && d['durationMs'] is num) {
+      durationMs = (d['durationMs'] as num).toInt();
+    } else if (d['duration'] != null && d['duration'] is num) {
+      durationMs = ((d['duration'] as num) * 1000).toInt();
+    }
 
-    final createdAt = (d['createdAt'] as Timestamp?)?.toDate();
+    bool isExplicit = false;
+    if (d['isExplicit'] is bool) {
+      isExplicit = d['isExplicit'] as bool;
+    } else if (d['isExplicit'] is num) {
+      isExplicit = (d['isExplicit'] as num) != 0;
+    } else if (d['isExplicit'] is String) {
+      isExplicit = (d['isExplicit'] as String).toLowerCase() == 'true';
+    }
+
+    int trackNumber = 1;
+    if (d['trackNumber'] is num) {
+      trackNumber = (d['trackNumber'] as num).toInt();
+    } else if (d['trackNumber'] is String) {
+      trackNumber = int.tryParse(d['trackNumber'] as String) ?? 1;
+    }
+
+    DateTime? createdAt;
+    if (d['createdAt'] is Timestamp) {
+      createdAt = (d['createdAt'] as Timestamp).toDate();
+    } else if (d['createdAt'] is String) {
+      createdAt = DateTime.tryParse(d['createdAt'] as String);
+    }
 
     return Song(
       id          : doc.id,
@@ -86,8 +111,8 @@ class Song {
       imageUrl    : imageUrl,
       streamUrl   : streamUrl,
       durationMs  : durationMs,
-      isExplicit  : d['isExplicit'] as bool? ?? false,
-      trackNumber : (d['trackNumber'] as num?)?.toInt() ?? 1,
+      isExplicit  : isExplicit,
+      trackNumber : trackNumber,
       videoId     : _str(d, 'video_id')    ?? _str(d, 'videoId') ?? '',
       createdAt   : createdAt,
     );

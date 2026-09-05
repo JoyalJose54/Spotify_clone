@@ -38,23 +38,34 @@ class FirebaseService {
   /// Shared, app-wide live stream of all tracks (ordered by title).
   /// Lazily starts one Firestore snapshot listener the first time it is called;
   /// all subsequent callers share the same WebSocket channel via the subject.
+  /// Live stream of all tracks in the database.
+  /// Uses a single shared Firestore listener — the first subscriber starts it,
+  /// all subsequent callers share the same WebSocket channel via the subject.
   static Stream<List<Song>> streamAllTracks() {
-    if (_tracksSubscription == null) {
-      _tracksSubscription = _db
+    _tracksSubscription ??= _db
           .collection('tracks')
-          .orderBy('title')
           .snapshots()
           .map((snap) {
-            final songs = snap.docs.map(Song.fromFirestore).toList();
+            final songs = <Song>[];
+            for (final doc in snap.docs) {
+              try {
+                songs.add(Song.fromFirestore(doc));
+              } catch (e) {
+                debugPrint('Error parsing track ${doc.id}: $e');
+              }
+            }
+            songs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
             _cachedAllTracks = songs;
             _lastFetchTime = DateTime.now();
             return songs;
           })
           .listen(
             _tracksSubject.add,
-            onError: _tracksSubject.addError,
+            onError: (err) {
+              debugPrint('Error in streamAllTracks: $err');
+              _tracksSubject.addError(err);
+            },
           );
-    }
     return _tracksSubject.stream;
   }
 
@@ -64,16 +75,41 @@ class FirebaseService {
 
   /// One-shot fetch of all tracks (used when a stream isn't needed).
   static Future<List<Song>> fetchAllTracks() async {
+    // 1. Prefer active subject values if available
+    if (_tracksSubject.hasValue && _tracksSubject.value.isNotEmpty) {
+      _cachedAllTracks = _tracksSubject.value;
+      _lastFetchTime = DateTime.now();
+      return _cachedAllTracks;
+    }
+
+    // 2. Return cached if still fresh (< 5 minutes)
     if (_cachedAllTracks.isNotEmpty && _lastFetchTime != null &&
         DateTime.now().difference(_lastFetchTime!) < const Duration(minutes: 5)) {
       return _cachedAllTracks;
     }
+
+    // 3. Fetch from Firestore without forcing orderBy so tracks without title are not dropped
     try {
-      final snap = await _db.collection('tracks').orderBy('title').get();
-      _cachedAllTracks = snap.docs.map(Song.fromFirestore).toList();
-      _lastFetchTime = DateTime.now();
+      final snap = await _db.collection('tracks').get();
+      final List<Song> songs = [];
+      for (final doc in snap.docs) {
+        try {
+          songs.add(Song.fromFirestore(doc));
+        } catch (e) {
+          debugPrint('Error parsing track in fetchAllTracks ${doc.id}: $e');
+        }
+      }
+      songs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      if (songs.isNotEmpty) {
+        _cachedAllTracks = songs;
+        _lastFetchTime = DateTime.now();
+        if (!_tracksSubject.hasValue || _tracksSubject.value.isEmpty) {
+          _tracksSubject.add(songs);
+        }
+      }
       return _cachedAllTracks;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('fetchAllTracks error: $e');
       return _cachedAllTracks;
     }
   }
@@ -94,14 +130,35 @@ class FirebaseService {
   }
 
   static Future<List<Song>> searchTracks(String query) async {
-    if (query.trim().isEmpty) return [];
-    final q = query.toLowerCase();
+    final cleanQuery = query.trim().toLowerCase();
+    if (cleanQuery.isEmpty) return [];
+
     final all = await fetchAllTracks();
-    
-    final results = all.where((s) =>
-        s.title.toLowerCase().contains(q) ||
-        s.artist.toLowerCase().contains(q) ||
-        s.album.toLowerCase().contains(q)).toList();
+    final tracksToSearch = _cachedAllTracks.isNotEmpty ? _cachedAllTracks : all;
+    if (tracksToSearch.isEmpty) return [];
+
+    final terms = cleanQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+
+    final results = tracksToSearch.where((s) {
+      final title = s.title.toLowerCase();
+      final artist = s.artist.toLowerCase();
+      final album = s.album.toLowerCase();
+      final combined = '$title $artist $album';
+
+      // 1. Direct query match on title, artist, or album
+      if (title.contains(cleanQuery) ||
+          artist.contains(cleanQuery) ||
+          album.contains(cleanQuery)) {
+        return true;
+      }
+
+      // 2. Multi-word search (e.g. "artist song_title" or "yellow coldplay")
+      if (terms.isNotEmpty && terms.every((t) => combined.contains(t))) {
+        return true;
+      }
+
+      return false;
+    }).toList();
 
     results.sort((a, b) {
       final aTitle = a.title.toLowerCase();
@@ -110,27 +167,54 @@ class FirebaseService {
       final bArtist = b.artist.toLowerCase();
 
       int scoreA = 0;
-      if (aTitle == q) {
-        scoreA += 100;
-      } else if (aTitle.startsWith(q)) scoreA += 50;
-      
-      if (aArtist == q) {
+      if (aTitle == cleanQuery) {
+        scoreA += 120;
+      } else if (aTitle.startsWith(cleanQuery)) {
+        scoreA += 70;
+      } else if (aTitle.contains(cleanQuery)) {
         scoreA += 40;
-      } else if (aArtist.startsWith(q)) scoreA += 20;
+      }
+
+      if (aArtist == cleanQuery) {
+        scoreA += 90;
+      } else if (aArtist.startsWith(cleanQuery)) {
+        scoreA += 50;
+      } else if (aArtist.contains(cleanQuery)) {
+        scoreA += 30;
+      }
+
+      for (final t in terms) {
+        if (aTitle.contains(t)) scoreA += 15;
+        if (aArtist.contains(t)) scoreA += 10;
+        if (a.album.toLowerCase().contains(t)) scoreA += 5;
+      }
 
       int scoreB = 0;
-      if (bTitle == q) {
-        scoreB += 100;
-      } else if (bTitle.startsWith(q)) scoreB += 50;
-      
-      if (bArtist == q) {
+      if (bTitle == cleanQuery) {
+        scoreB += 120;
+      } else if (bTitle.startsWith(cleanQuery)) {
+        scoreB += 70;
+      } else if (bTitle.contains(cleanQuery)) {
         scoreB += 40;
-      } else if (bArtist.startsWith(q)) scoreB += 20;
+      }
+
+      if (bArtist == cleanQuery) {
+        scoreB += 90;
+      } else if (bArtist.startsWith(cleanQuery)) {
+        scoreB += 50;
+      } else if (bArtist.contains(cleanQuery)) {
+        scoreB += 30;
+      }
+
+      for (final t in terms) {
+        if (bTitle.contains(t)) scoreB += 15;
+        if (bArtist.contains(t)) scoreB += 10;
+        if (b.album.toLowerCase().contains(t)) scoreB += 5;
+      }
 
       if (scoreA != scoreB) {
         return scoreB.compareTo(scoreA); // Higher score first
       }
-      // Fallback to alphabetical if scores are tied
       return aTitle.compareTo(bTitle);
     });
 
@@ -558,6 +642,71 @@ class FirebaseService {
         .collection('recentlyPlayed')
         .orderBy('playedAt', descending: true)
         .limit(15)
+        .snapshots()
+        .asyncMap((snap) async {
+      if (snap.docs.isEmpty) return <Song>[];
+      final ids       = snap.docs.map((d) => d.id).toList();
+      final allTracks = await fetchAllTracks();
+      final trackMap  = {for (final t in allTracks) t.id: t};
+      return ids.map((id) => trackMap[id]).whereType<Song>().toList();
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  RECENT SEARCHES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Record a searched track into the user's search history.
+  static Future<void> addRecentSearch(String trackId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('recentSearches')
+        .doc(trackId)
+        .set({'trackId': trackId, 'searchedAt': FieldValue.serverTimestamp()});
+  }
+
+  /// Remove a searched track from history.
+  static Future<void> removeRecentSearch(String trackId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('recentSearches')
+        .doc(trackId)
+        .delete();
+  }
+
+  /// Clear all search history.
+  static Future<void> clearRecentSearches() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    final snap = await _db
+        .collection('users')
+        .doc(uid)
+        .collection('recentSearches')
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in snap.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+
+  /// Stream user's recent searches (resolved to Song objects).
+  static Stream<List<Song>> streamRecentSearches() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return const Stream.empty();
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('recentSearches')
+        .orderBy('searchedAt', descending: true)
+        .limit(20)
         .snapshots()
         .asyncMap((snap) async {
       if (snap.docs.isEmpty) return <Song>[];

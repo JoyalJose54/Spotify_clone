@@ -21,6 +21,7 @@ class IngestionProvider extends ChangeNotifier {
   final Set<String> ingestingVideoIds = {};
   final Map<String, double> ingestionProgress = {};
   final Map<String, bool> doneVideoIds = {};
+  final Set<String> fallbackVideoIds = {};
   final Map<String, String?> libraryCheck = {};
   bool checkingLibrary = false;
 
@@ -183,7 +184,9 @@ class IngestionProvider extends ChangeNotifier {
 
         if (result.success) {
           row.status = result.isDuplicate ? EntryStatus.duplicate : EntryStatus.done;
-          row.message = result.message;
+          row.message = result.fallbackUsed
+              ? 'YouTube fallback ⚡'
+              : (result.isDuplicate ? 'Already in library' : 'SpotiFLAC (FLAC) ✓');
           row.trackId = result.trackId;
           if (result.isDuplicate) {
             csvDupCount++;
@@ -266,7 +269,7 @@ class IngestionProvider extends ChangeNotifier {
 
         if (result.success) {
           row.status = EntryStatus.done;
-          row.message = result.message;
+          row.message = result.fallbackUsed ? 'YouTube fallback ⚡' : 'SpotiFLAC (FLAC) ✓';
           row.trackId = result.trackId;
           csvSuccessCount++;
           csvDupCount--;
@@ -366,11 +369,30 @@ class IngestionProvider extends ChangeNotifier {
 
       if (result.success) {
         doneVideoIds[r.videoId] = result.isDuplicate;
-        showSnack(
-          result.isDuplicate ? 'Song already in library' : 'Added successfully',
-          isError: result.isDuplicate,
-          icon: result.isDuplicate ? Icons.info_outline : Icons.check_circle_outline,
-        );
+        if (result.fallbackUsed) {
+          fallbackVideoIds.add(r.videoId);
+        }
+        notifyListeners();
+
+        if (result.isDuplicate) {
+          showSnack(
+            'Song already in library',
+            isError: true,
+            icon: Icons.info_outline,
+          );
+        } else if (result.fallbackUsed) {
+          showSnack(
+            'Spotify lossless unavailable — Retrieved via YouTube fallback ⚡',
+            isError: false,
+            icon: Icons.swap_horiz_rounded,
+          );
+        } else {
+          showSnack(
+            'Studio lossless audio added via SpotiFLAC ✓',
+            isError: false,
+            icon: Icons.check_circle_outline,
+          );
+        }
       } else {
         showSnack('Error: ${result.errorMessage}', isError: true);
       }

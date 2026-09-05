@@ -34,6 +34,9 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
+    // Warm up the tracks cache so searching is immediate and reliable
+    FirebaseService.fetchAllTracks();
+    FirebaseService.streamAllTracks();
     _focus.addListener(() {
       if (_focus.hasFocus) {
         setState(() => _isSearching = true);
@@ -49,26 +52,55 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  Future<void> _search(String q) async {
-    // Show loading immediately for responsiveness
-    if (mounted) setState(() { _loading = true; _query = q; });
-    // Cancel any previous pending search
-    _debounce?.cancel();
-    if (q.trim().isEmpty) {
-      if (mounted) setState(() { _results = []; _loading = false; });
+  Future<void> _executeSearch(String q) async {
+    final query = q.trim();
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _results = [];
+          _loading = false;
+        });
+      }
       return;
     }
-    // Wait 350ms after the last keystroke before actually querying
-    _debounce = Timer(const Duration(milliseconds: 350), () async {
-      final res = await FirebaseService.searchTracks(q);
-      if (mounted) setState(() { _results = res; _loading = false; });
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+    final res = await FirebaseService.searchTracks(query);
+    if (mounted && _query.trim() == query) {
+      setState(() {
+        _results = res;
+        _loading = false;
+      });
+    }
+  }
+
+  void _search(String q) {
+    _query = q;
+    _debounce?.cancel();
+    if (q.trim().isEmpty) {
+      setState(() {
+        _results = [];
+        _loading = false;
+      });
+      return;
+    }
+    setState(() => _loading = true);
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      _executeSearch(q);
     });
   }
 
   void _clearSearch() {
+    _debounce?.cancel();
     _ctrl.clear();
     _focus.unfocus();
-    setState(() { _query = ''; _results = []; _isSearching = false; });
+    setState(() {
+      _query = '';
+      _results = [];
+      _loading = false;
+      _isSearching = false;
+    });
   }
 
   @override
@@ -116,6 +148,11 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: TextField(
                         controller: _ctrl,
                         focusNode: _focus,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (val) {
+                          _debounce?.cancel();
+                          _executeSearch(val);
+                        },
                         style: SpotifyFonts.bold( 
                           color: Colors.black,
                           fontSize: 15,
@@ -128,6 +165,15 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                           prefixIcon: const Icon(CupertinoIcons.search,
                               color: Colors.black, size: 24),
+                          suffixIcon: _ctrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, color: Colors.black, size: 20),
+                                  onPressed: () {
+                                    _ctrl.clear();
+                                    _search('');
+                                  },
+                                )
+                              : null,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -201,6 +247,13 @@ class _SearchScreenState extends State<SearchScreen> {
           canDelete: true, // Allow deletion from library via search results
           playlistName: 'Search: "$_query"',
           showOptions: false,
+          onTap: () {
+            // Record this track to search history
+            FirebaseService.addRecentSearch(song.id);
+            final player = context.read<PlayerProvider>();
+            player.playSong(song, playlist: _results, playlistName: 'Search: "$_query"');
+            openNowPlaying(context, song);
+          },
         );
       },
     );
@@ -209,7 +262,7 @@ class _SearchScreenState extends State<SearchScreen> {
   // ── Recent Searches ────────────────────────────────────────────────────────
   Widget _buildRecentSearches() {
     return StreamBuilder<List<Song>>(
-      stream: FirebaseService.streamRecentlyPlayed(),
+      stream: FirebaseService.streamRecentSearches(),
       builder: (context, snapshot) {
         final recents = snapshot.data ?? [];
         if (recents.isEmpty) {
@@ -228,7 +281,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Text(
-                  'Recents',
+                  'Recent searches',
                   style: SpotifyFonts.bold(
                     color: Colors.white,
                     fontSize: 18,
@@ -251,7 +304,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: Center(
                   child: OutlinedButton(
                     onPressed: () {
-                      FirebaseService.clearRecentlyPlayed();
+                      FirebaseService.clearRecentSearches();
                     },
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: SpotifyColors.lightGrey, width: 1),
@@ -280,7 +333,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildRecentSearchTile(Song song) {
     return InkWell(
       onTap: () {
-        // Just play it immediately or re-trigger a search, we'll just play it.
+        FirebaseService.addRecentSearch(song.id);
         context.read<PlayerProvider>().playSong(song, playlist: [song]);
         openNowPlaying(context, song);
       },
@@ -319,7 +372,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             GestureDetector(
               onTap: () {
-                FirebaseService.removeRecentlyPlayed(song.id);
+                FirebaseService.removeRecentSearch(song.id);
               },
               child: const Icon(Icons.close, color: SpotifyColors.lightGrey, size: 24),
             ),

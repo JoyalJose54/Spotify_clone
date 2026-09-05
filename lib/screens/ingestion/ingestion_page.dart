@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../services/ingestion_service.dart';
 import '../../services/firebase_service.dart';
@@ -54,7 +55,7 @@ class _IngestionPageState extends State<IngestionPage>
     });
   }
 
-  Future<void> _showBackendSettingsDialog(BuildContext context) async {
+  Future<void> _showBackendSettingsDialog() async {
     final currentUrl = await IngestionService.getActiveBackendUrl();
     final ctrl = TextEditingController(text: currentUrl);
 
@@ -93,8 +94,8 @@ class _IngestionPageState extends State<IngestionPage>
               style: SpotifyFonts.regular(color: Colors.white, fontSize: 14),
               cursorColor: SpotifyColors.green,
               decoration: InputDecoration(
-                hintText: 'http://192.168.1.100:8080',
-                hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 14),
+                hintText: 'https://spotify-clone-uehl.onrender.com',
+                hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 13),
                 labelText: 'Backend Server URL',
                 labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 12),
                 border: const OutlineInputBorder(
@@ -112,6 +113,15 @@ class _IngestionPageState extends State<IngestionPage>
         ),
         actions: [
           TextButton(
+            onPressed: () {
+              ctrl.text = 'https://spotify-clone-uehl.onrender.com';
+            },
+            child: Text(
+              'Use Cloud (Render)',
+              style: SpotifyFonts.regular(color: SpotifyColors.green, fontWeight: FontWeight.bold),
+            ),
+          ),
+          TextButton(
             onPressed: () => Navigator.pop(dCtx),
             child: Text(
               'Cancel',
@@ -127,11 +137,12 @@ class _IngestionPageState extends State<IngestionPage>
             onPressed: () async {
               final newUrl = ctrl.text.trim();
               if (newUrl.isNotEmpty) {
+                final nav = Navigator.of(dCtx);
                 await IngestionService.updateBackendUrl(newUrl);
-                if (context.mounted) {
+                if (mounted) {
                   SpotifyToast.show(context, 'Backend URL updated!', icon: Icons.save);
                 }
-                Navigator.pop(dCtx);
+                nav.pop();
                 _checkBackendStatus();
               }
             },
@@ -283,75 +294,136 @@ class _IngestionPageState extends State<IngestionPage>
 
   @override
   Widget build(BuildContext context) {
+    final isOnline = _isBackendOnline;
+    final statusColor = isOnline == null
+        ? Colors.orange
+        : (isOnline ? SpotifyColors.green : const Color(0xFFFF4B4B));
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF090A0E),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F0F),
+        toolbarHeight: 76,
+        backgroundColor: const Color(0xFF0E1015),
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white70),
-          onPressed: () => Navigator.pop(context),
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 10.0, top: 6.0),
+          child: Center(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+          ),
         ),
-        title: Text(
-          'Smart Ingestion',
-          style: SpotifyFonts.regular( 
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-            letterSpacing: 0.5,
+        title: Padding(
+          padding: const EdgeInsets.only(top: 6.0),
+          child: Column(
+            children: [
+              Text(
+                'Smart Ingestion',
+                style: SpotifyFonts.bold(
+                  color: Colors.white,
+                  fontSize: 18.5,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2.5),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      SpotifyColors.green.withValues(alpha: 0.2),
+                      const Color(0xFF00E5FF).withValues(alpha: 0.2),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: SpotifyColors.green.withValues(alpha: 0.35),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  'STUDIO LOSSLESS ENGINE',
+                  style: SpotifyFonts.bold(
+                    color: SpotifyColors.green,
+                    fontSize: 8.5,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         centerTitle: true,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 14.0, top: 6.0),
             child: Center(
               child: GestureDetector(
-                onTap: () => _showBackendSettingsDialog(context),
+                onTap: _showBackendSettingsDialog,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _isBackendOnline == null
-                        ? Colors.orange.withValues(alpha: 0.1)
-                        : (_isBackendOnline!
-                            ? SpotifyColors.green.withValues(alpha: 0.1)
-                            : Colors.red.withValues(alpha: 0.1)),
-                    borderRadius: BorderRadius.circular(12),
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _isBackendOnline == null
-                          ? Colors.orange.withValues(alpha: 0.3)
-                          : (_isBackendOnline!
-                              ? SpotifyColors.green.withValues(alpha: 0.3)
-                              : Colors.red.withValues(alpha: 0.3)),
+                      color: statusColor.withValues(alpha: 0.45),
                       width: 1,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: statusColor.withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        spreadRadius: 0.5,
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 6,
-                        height: 6,
+                        width: 7,
+                        height: 7,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _isBackendOnline == null
-                              ? Colors.orange
-                              : (_isBackendOnline! ? SpotifyColors.green : Colors.red),
+                          color: statusColor,
+                          boxShadow: [
+                            BoxShadow(
+                              color: statusColor.withValues(alpha: 0.8),
+                              blurRadius: 6,
+                              spreadRadius: 1,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 6),
+                      )
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .scale(begin: const Offset(0.85, 0.85), end: const Offset(1.25, 1.25)),
+                      const SizedBox(width: 7),
                       Text(
-                        _isBackendOnline == null
+                        isOnline == null
                             ? 'Checking'
-                            : (_isBackendOnline! ? 'Online' : 'Offline'),
-                        style: SpotifyFonts.regular(
-                          color: _isBackendOnline == null
-                              ? Colors.orange
-                              : (_isBackendOnline! ? SpotifyColors.green : Colors.red),
+                            : (isOnline ? 'Online' : 'Offline'),
+                        style: SpotifyFonts.bold(
+                          color: statusColor,
                           fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.3,
                         ),
                       ),
+                      const SizedBox(width: 3),
+                      Icon(Icons.tune_rounded, color: statusColor.withValues(alpha: 0.7), size: 13),
                     ],
                   ),
                 ),
@@ -360,23 +432,38 @@ class _IngestionPageState extends State<IngestionPage>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
+          preferredSize: const Size.fromHeight(74),
           child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            margin: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            padding: const EdgeInsets.all(4.5),
             decoration: BoxDecoration(
-              color: const Color(0xFF161616),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: const Color(0xFF262626)),
+              color: const Color(0xFF14171E),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: const Color(0xFF282D3B)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: TabBar(
+              dividerColor: Colors.transparent,
+              dividerHeight: 0,
               controller: _tab,
               indicator: BoxDecoration(
-                color: SpotifyColors.green,
-                borderRadius: BorderRadius.circular(24),
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF1DB954),
+                    Color(0xFF1ED760),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: SpotifyColors.green.withValues(alpha: 0.2),
-                    blurRadius: 8,
+                    color: SpotifyColors.green.withValues(alpha: 0.4),
+                    blurRadius: 12,
                     offset: const Offset(0, 2),
                   ),
                 ],
@@ -384,27 +471,24 @@ class _IngestionPageState extends State<IngestionPage>
               indicatorSize: TabBarIndicatorSize.tab,
               labelColor: Colors.black,
               unselectedLabelColor: Colors.white70,
-              labelStyle: SpotifyFonts.regular( fontSize: 12, fontWeight: FontWeight.bold),
-              unselectedLabelStyle: SpotifyFonts.regular( fontSize: 12, fontWeight: FontWeight.bold),
+              labelStyle: SpotifyFonts.bold(fontSize: 12.5),
+              unselectedLabelStyle: SpotifyFonts.bold(fontSize: 12.5),
               tabs: const [
                 Tab(
+                  height: 42,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.upload_file, size: 16),
+                      Icon(Icons.upload_file_rounded, size: 17),
                       SizedBox(width: 8),
-                      Text('CSV Upload'),
+                      Text('CSV Import'),
                     ],
                   ),
                 ),
                 Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.search, size: 16),
-                      SizedBox(width: 8),
-                      Text('YouTube Search'),
-                    ],
+                  height: 42,
+                  child: Center(
+                    child: Text('Online Search'),
                   ),
                 ),
               ],
@@ -418,8 +502,8 @@ class _IngestionPageState extends State<IngestionPage>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF0F0F0F),
-              Color(0xFF070707),
+              Color(0xFF0E1016),
+              Color(0xFF08090C),
             ],
           ),
         ),
@@ -662,34 +746,43 @@ class _CsvTabState extends State<_CsvTab> {
     return Column(children: [
       // ── Playlist picker + action buttons ──────────────────────────────────
       Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF121212),
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          ),
-          boxShadow: [
-            BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 4))
-          ]
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF11141C),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFF1F2433)),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 16,
+              offset: Offset(0, 6),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        padding: const EdgeInsets.all(18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // Playlist picker
           widget.loadingPlaylists
-              ? const SizedBox(height: 48,
-                  child: Center(child: CircularProgressIndicator(
-                      color: SpotifyColors.green, strokeWidth: 2)))
+              ? const SizedBox(
+                  height: 54,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: SpotifyColors.green,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                )
               : _PlaylistDropdown(
                   playlists: provider.localPlaylists,
-                  selected:  widget.selectedPlaylist,
+                  selected: widget.selectedPlaylist,
                   onChanged: widget.onPlaylistChanged,
                 ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           // Row: Pick file + Start
           Row(children: [
             Expanded(
               child: _GreenOutlineButton(
-                icon:  Icons.folder_open_outlined,
+                icon: Icons.upload_file_rounded,
                 label: 'Pick CSV',
                 onTap: provider.csvProcessing ? null : _pickCsv,
               ),
@@ -697,10 +790,12 @@ class _CsvTabState extends State<_CsvTab> {
             const SizedBox(width: 12),
             Expanded(
               child: _GreenButton(
-                icon:    Icons.rocket_launch_outlined,
-                label:   'Ingest All',
+                icon: Icons.rocket_launch_rounded,
+                label: 'Ingest All',
                 loading: provider.csvProcessing,
-                onTap:   (!provider.csvProcessing && provider.csvEntries.isNotEmpty) ? _startProcessing : null,
+                onTap: (!provider.csvProcessing && provider.csvEntries.isNotEmpty)
+                    ? _startProcessing
+                    : null,
               ),
             ),
           ]),
@@ -708,18 +803,16 @@ class _CsvTabState extends State<_CsvTab> {
       ),
 
       // ── Progress Dashboard ─────────────────────────────────────────────────
-      // Plain Container intentionally — AnimatedContainer caused
-      // !semantics.parentDataDirty assertions when scrolling during ingestion.
       if (total > 0) ...[
         Container(
           margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF181818),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF282828)),
+            color: const Color(0xFF131722),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF232B3E)),
             boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
+              BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 4)),
             ],
           ),
           child: Column(
@@ -728,35 +821,56 @@ class _CsvTabState extends State<_CsvTab> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Bulk Ingestion Progress',
-                    style: SpotifyFonts.regular( 
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: SpotifyColors.green.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.sync_rounded, color: SpotifyColors.green, size: 14),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Batch Ingestion Progress',
+                        style: SpotifyFonts.bold(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '${(progress * 100).toInt()}%',
-                    style: SpotifyFonts.regular( 
-                      color: SpotifyColors.green,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: SpotifyColors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: SpotifyColors.green.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      '${(progress * 100).toInt()}%',
+                      style: SpotifyFonts.bold(
+                        color: SpotifyColors.green,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor: const Color(0xFF2A2A2A),
-                  color: SpotifyColors.green,
-                  minHeight: 8,
+                child: SizedBox(
+                  height: 7,
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: const Color(0xFF1E2433),
+                    valueColor: const AlwaysStoppedAnimation<Color>(SpotifyColors.green),
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               // Stats badges
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -765,26 +879,26 @@ class _CsvTabState extends State<_CsvTab> {
                     label: 'Success',
                     count: provider.csvSuccessCount,
                     color: SpotifyColors.green,
-                    icon: Icons.check_circle_outline,
+                    icon: Icons.check_circle_rounded,
                   ),
                   _StatBadge(
                     label: 'Duplicate',
                     count: provider.csvDupCount,
-                    color: const Color(0xFF1A78C2),
-                    icon: Icons.copy_outlined,
+                    color: const Color(0xFF00E5FF),
+                    icon: Icons.copy_rounded,
                   ),
                   _StatBadge(
                     label: 'Failed',
                     count: provider.csvFailCount,
                     color: SpotifyColors.error,
-                    icon: Icons.error_outline,
+                    icon: Icons.error_rounded,
                   ),
                 ],
               ),
               if (provider.csvProcessing && provider.csvActiveTrack.isNotEmpty) ...[
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(color: Color(0xFF2E2E2E), height: 16),
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(color: Color(0xFF232B3E), height: 1),
                 ),
                 Row(
                   children: [
@@ -800,10 +914,9 @@ class _CsvTabState extends State<_CsvTab> {
                     Expanded(
                       child: Text(
                         'Ingesting: ${provider.csvActiveTrack}',
-                        style: SpotifyFonts.regular( 
+                        style: SpotifyFonts.bold(
                           color: Colors.amber,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 11.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -820,13 +933,135 @@ class _CsvTabState extends State<_CsvTab> {
       // ── Entry list ─────────────────────────────────────────────────────────
       Expanded(
         child: provider.csvEntries.isEmpty
-            ? const _EmptyHint(
-                icon:  Icons.upload_file,
-                title: 'Import CSV File',
-                body:  'Upload a .csv file containing song metadata.\nExpected headers: "Title, Artist" (one song per row).',
+            ? Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF11141C),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF1F2433)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black45,
+                          blurRadius: 16,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                SpotifyColors.green.withValues(alpha: 0.25),
+                                SpotifyColors.green.withValues(alpha: 0.05),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: SpotifyColors.green.withValues(alpha: 0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.cloud_upload_rounded,
+                            color: SpotifyColors.green,
+                            size: 32,
+                          ),
+                        )
+                            .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                            .moveY(begin: 0, end: -6, duration: 1800.ms, curve: Curves.easeInOut),
+                        const SizedBox(height: 18),
+                        Text(
+                          'Batch Import Songs via CSV',
+                          style: SpotifyFonts.bold(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Select a .csv file containing song metadata to automatically resolve high-bitrate audio, download album artwork, and sync tags directly to your local library.',
+                          textAlign: TextAlign.center,
+                          style: SpotifyFonts.regular(
+                            color: SpotifyColors.lightGrey,
+                            fontSize: 12.5,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF181C26),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF262E40)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.table_chart_rounded, color: SpotifyColors.green, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Headers: "Title, Artist"',
+                                style: SpotifyFonts.bold(
+                                  color: Colors.white70,
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: _pickCsv,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1DB954), Color(0xFF15883E)],
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: SpotifyColors.green.withValues(alpha: 0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.file_upload_rounded, color: Colors.black, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Choose CSV File',
+                                  style: SpotifyFonts.bold(
+                                    color: Colors.black,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               )
             : ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 itemCount: provider.csvEntries.length,
                 itemBuilder: (_, i) => _CsvEntryTile(row: provider.csvEntries[i]),
               ),
@@ -852,23 +1087,29 @@ class _StatBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 12),
-          const SizedBox(width: 4),
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 6),
           Text(
-            '$label: $count',
-            style: SpotifyFonts.regular( 
+            '$label: ',
+            style: SpotifyFonts.regular(
+              color: color.withValues(alpha: 0.9),
+              fontSize: 11,
+            ),
+          ),
+          Text(
+            '$count',
+            style: SpotifyFonts.bold(
               color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
+              fontSize: 11.5,
             ),
           ),
         ],
@@ -885,57 +1126,76 @@ class _CsvEntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, icon) = switch (row.status) {
-      EntryStatus.done      => (SpotifyColors.green,               Icons.check_circle_outline),
-      EntryStatus.duplicate => (const Color(0xFF1A78C2),           Icons.copy_outlined),
-      EntryStatus.failed    => (SpotifyColors.error,               Icons.error_outline),
-      EntryStatus.processing => (Colors.amber,                     Icons.hourglass_top_rounded),
-      EntryStatus.pending   => (SpotifyColors.lightGrey,           Icons.radio_button_unchecked),
+      EntryStatus.done      => (SpotifyColors.green, Icons.check_circle_rounded),
+      EntryStatus.duplicate => (const Color(0xFF00E5FF), Icons.copy_rounded),
+      EntryStatus.failed    => (SpotifyColors.error, Icons.error_rounded),
+      EntryStatus.processing => (Colors.amber, Icons.hourglass_top_rounded),
+      EntryStatus.pending   => (SpotifyColors.lightGrey, Icons.radio_button_unchecked),
     };
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF121212),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF131722),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: row.status == EntryStatus.processing
-              ? Colors.amber.withValues(alpha: 0.3)
-              : const Color(0xFF222222),
+              ? Colors.amber.withValues(alpha: 0.4)
+              : row.status == EntryStatus.done
+                  ? SpotifyColors.green.withValues(alpha: 0.25)
+                  : const Color(0xFF1E2433),
           width: 1,
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: Container(
-          width: 36, height: 36,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color:        color.withValues(alpha: 0.08),
-            shape:        BoxShape.circle,
-            border:       Border.all(color: color.withValues(alpha: 0.2), width: 1.2),
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.25), width: 1.2),
           ),
           child: row.status == EntryStatus.processing
               ? const Padding(
-                  padding: EdgeInsets.all(9),
-                  child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2))
-              : Icon(icon, color: color, size: 16),
+                  padding: EdgeInsets.all(10),
+                  child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2),
+                )
+              : Icon(icon, color: color, size: 18),
         ),
-        title: Text(row.entry.title,
-            style: SpotifyFonts.regular( color: Colors.white, fontSize: 13,
-                fontWeight: FontWeight.bold),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(row.entry.artist,
-            style: SpotifyFonts.regular( color: SpotifyColors.lightGrey, fontSize: 11),
-            maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          row.entry.title,
+          style: SpotifyFonts.bold(
+            color: Colors.white,
+            fontSize: 13,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          row.entry.artist,
+          style: SpotifyFonts.regular(
+            color: SpotifyColors.lightGrey,
+            fontSize: 11,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: row.message.isNotEmpty
             ? Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.05),
+                  color: color.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withValues(alpha: 0.2)),
                 ),
                 child: Text(
                   row.message,
-                  style: SpotifyFonts.regular( color: color, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: SpotifyFonts.bold(
+                    color: color,
+                    fontSize: 10,
+                  ),
                   textAlign: TextAlign.end,
                 ),
               )
@@ -985,9 +1245,10 @@ class _SearchTabState extends State<_SearchTab> {
   Future<void> _search() async {
     final q = _ctrl.text.trim();
     if (q.isEmpty) return;
-    await _stopPreview();
-
     final provider = context.read<IngestionProvider>();
+    await _stopPreview();
+    if (!mounted) return;
+
     provider.setSearchSearching(true);
 
     final res = await IngestionService.searchYouTube(q);
@@ -1002,8 +1263,6 @@ class _SearchTabState extends State<_SearchTab> {
       provider.preCheckSearchResults(res, widget.cachedTracks);
     }
   }
-
-
 
   Future<void> _stopPreview() async {
     if (_previewPlayer != null) {
@@ -1025,11 +1284,12 @@ class _SearchTabState extends State<_SearchTab> {
       return;
     }
 
+    final provider = context.read<IngestionProvider>();
     if (_previewVideoId == r.videoId) {
       await _stopPreview();
+      if (!mounted) return;
     }
 
-    final provider = context.read<IngestionProvider>();
     final potentialDup = provider.checkPotentialDuplicatePublic(r, widget.cachedTracks);
     final hasCloudDup = provider.libraryCheck[r.videoId] != null;
 
@@ -1132,7 +1392,7 @@ class _SearchTabState extends State<_SearchTab> {
       });
 
     } catch (e) {
-      print('PREVIEW ERROR: $e');
+      debugPrint('PREVIEW ERROR: $e');
       if (mounted) {
         setState(() {
           _previewVideoId = null;
@@ -1143,6 +1403,17 @@ class _SearchTabState extends State<_SearchTab> {
     }
   }
 
+  static const _trendingChips = [
+    '🔥 Trending',
+    'Believer',
+    'Starboy',
+    'Coldplay',
+    'Arijit Singh',
+    'Die With A Smile',
+    'Shape of You',
+    'Tamil Hits',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<IngestionProvider>();
@@ -1151,109 +1422,261 @@ class _SearchTabState extends State<_SearchTab> {
     final error = provider.searchError;
 
     return Column(children: [
-      // ── Controls ───────────────────────────────────────────────────────────
+      // ── Controls Container with Glassmorphism ─────────────────────────────
       Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF121212),
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(24),
-            bottomRight: Radius.circular(24),
-          ),
-          boxShadow: [
-            BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 4))
-          ]
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF11141C),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFF1F2433)),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 16,
+              offset: Offset(0, 6),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Column(children: [
-          // Playlist picker
-          widget.loadingPlaylists
-              ? const SizedBox(height: 48,
-                  child: Center(child: CircularProgressIndicator(
-                      color: SpotifyColors.green, strokeWidth: 2)))
-              : _PlaylistDropdown(
-                  playlists: provider.localPlaylists,
-                  selected:  widget.selectedPlaylist,
-                  onChanged: widget.onPlaylistChanged,
-                ),
-          const SizedBox(height: 14),
-          // Search bar
-          Row(children: [
-            Expanded(
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color:        const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12),
-                  border:       Border.all(color: const Color(0xFF2E2E2E)),
-                ),
-                child: Row(children: [
-                  const SizedBox(width: 14),
-                  const Icon(Icons.search, color: SpotifyColors.lightGrey, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      style:       SpotifyFonts.regular( color: Colors.white, fontSize: 13),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted:     (_) => _search(),
-                      decoration: InputDecoration(
-                        hintText:  'Search Artist or Song Title…',
-                        hintStyle: SpotifyFonts.regular( color: SpotifyColors.lightGrey, fontSize: 13),
-                        border:    InputBorder.none,
-                        isDense:   true,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Column(
+          children: [
+            // Target Playlist Selector
+            widget.loadingPlaylists
+                ? const SizedBox(
+                    height: 48,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: SpotifyColors.green,
+                        strokeWidth: 2,
                       ),
                     ),
+                  )
+                : _PlaylistDropdown(
+                    playlists: provider.localPlaylists,
+                    selected: widget.selectedPlaylist,
+                    onChanged: widget.onPlaylistChanged,
                   ),
-                ]),
+            const SizedBox(height: 12),
+            // Search bar row
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF181C26),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF2B3346)),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: _ctrl,
+                            style: SpotifyFonts.regular(
+                              color: Colors.white,
+                              fontSize: 13.5,
+                            ),
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => _search(),
+                            decoration: InputDecoration(
+                              hintText: 'Search songs, artists, or paste URL...',
+                              hintStyle: SpotifyFonts.regular(
+                                color: SpotifyColors.lightGrey,
+                                fontSize: 13,
+                              ),
+                              filled: false,
+                              fillColor: Colors.transparent,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        if (_ctrl.text.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              _ctrl.clear();
+                              setState(() {});
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: SpotifyColors.lightGrey.withValues(alpha: 0.8),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _GreenButton(
+                  label: 'Search',
+                  loading: searching,
+                  onTap: searching ? null : _search,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Quick Trending Discovery Chips
+            SizedBox(
+              height: 32,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _trendingChips.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (ctx, i) {
+                  final chip = _trendingChips[i];
+                  final cleanQuery = chip.replaceFirst('🔥 ', '');
+                  return GestureDetector(
+                    onTap: () {
+                      _ctrl.text = cleanQuery;
+                      _search();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF181C26),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: SpotifyColors.green.withValues(alpha: 0.35),
+                          width: 0.9,
+                        ),
+                      ),
+                      child: Text(
+                        chip,
+                        style: SpotifyFonts.bold(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            const SizedBox(width: 10),
-            _GreenButton(
-              icon: Icons.search, label: 'Search',
-              loading: searching, onTap: searching ? null : _search,
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: SpotifyColors.green, size: 13),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      'SpotiFLAC Studio Lossless active • Auto YouTube fallback for regional & Malayalam tracks',
+                      style: SpotifyFonts.regular(
+                        color: SpotifyColors.lightGrey,
+                        fontSize: 10.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ]),
-        ]),
+          ],
+        ),
       ),
 
-      // ── Results ────────────────────────────────────────────────────────────
+      // ── Results List ───────────────────────────────────────────────────────
       Expanded(
-        child: error != null
-            ? _EmptyHint(icon: Icons.search_off, title: 'No results',
-                         body: error)
-            : results.isEmpty && !searching
-                ? const _EmptyHint(icon: Icons.youtube_searched_for,
-                             title: 'Search YouTube',
-                             body: 'Search the YouTube database directly to import new songs.\nThey will download, process, and automatically match metadata.')
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: results.length,
-                    itemBuilder: (_, i) {
-                      final r            = results[i];
-                      final exactLocalMatch = widget.cachedTracks.any((s) => s.videoId.isNotEmpty && s.videoId == r.videoId);
-                      final isIngesting  = provider.ingestingVideoIds.contains(r.videoId);
-                      final progress     = provider.ingestionProgress[r.videoId] ?? 0.0;
-                      final isDone       = provider.doneVideoIds.containsKey(r.videoId) || exactLocalMatch;
-                      final isDup        = exactLocalMatch || (provider.doneVideoIds[r.videoId] == true);
-                      final preChecked   = provider.libraryCheck.containsKey(r.videoId);
-                      
-                      final isPlayingPreview = _previewVideoId == r.videoId;
-
-                      return _YoutubeResultTile(
-                        result:           r,
-                        isLoading:        isIngesting || (!exactLocalMatch && !preChecked && provider.checkingLibrary),
-                        progress:         progress,
-                        isDone:           isDone,
-                        isDup:            isDup,
-                        isPlayingPreview: isPlayingPreview,
-                        isPreviewLoading: isPlayingPreview && _previewLoading,
-                        onPlayPreview:    () => _togglePreview(r),
-                        onAdd:            isDone || isIngesting
-                                               ? null
-                                               : () => _ingest(r),
-                      );
-                    },
+        child: searching
+            ? Center(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CircularProgressIndicator(
+                          color: SpotifyColors.green,
+                          strokeWidth: 2.8,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Searching Spotify & YouTube catalog...',
+                        style: SpotifyFonts.bold(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+              )
+            : error != null
+                ? _EmptyHint(
+                    icon: Icons.music_off_rounded,
+                    title: 'No results found',
+                    body: error,
+                  )
+                : results.isEmpty
+                    ? const _EmptyHint(
+                        icon: Icons.queue_music_rounded,
+                        title: 'Search Any Song',
+                        body:
+                            'Type an artist, song title, or keyword above.\nSongs will be transcoded to studio audio and added to your library.',
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: results.length,
+                        itemBuilder: (_, i) {
+                          final r = results[i];
+                          final exactLocalMatch = widget.cachedTracks.any(
+                              (s) => s.videoId.isNotEmpty && s.videoId == r.videoId);
+                          final isIngesting =
+                              provider.ingestingVideoIds.contains(r.videoId);
+                          final progress =
+                              provider.ingestionProgress[r.videoId] ?? 0.0;
+                          final isDone =
+                              provider.doneVideoIds.containsKey(r.videoId) ||
+                                  exactLocalMatch;
+                          final isDup = exactLocalMatch ||
+                              (provider.doneVideoIds[r.videoId] == true);
+                          final preChecked =
+                              provider.libraryCheck.containsKey(r.videoId);
+
+                          final isPlayingPreview = _previewVideoId == r.videoId;
+
+                          return _YoutubeResultTile(
+                            result: r,
+                            isLoading: isIngesting ||
+                                (!exactLocalMatch &&
+                                    !preChecked &&
+                                    provider.checkingLibrary),
+                            progress: progress,
+                            isDone: isDone,
+                            isDup: isDup,
+                            isPlayingPreview: isPlayingPreview,
+                            isPreviewLoading: isPlayingPreview && _previewLoading,
+                            onPlayPreview: () => _togglePreview(r),
+                            onAdd: isDone || isIngesting ? null : () => _ingest(r),
+                          )
+                              .animate()
+                              .fadeIn(duration: (200 + (i * 35).clamp(0, 300)).ms)
+                              .slideY(begin: 0.08, end: 0);
+                        },
+                      ),
       ),
     ]);
   }
@@ -1267,16 +1690,88 @@ class _SearchTabState extends State<_SearchTab> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Dancing Equalizer Visualizer Bars for Previews
+// ─────────────────────────────────────────────────────────────────────────────
+class _EqualizerBars extends StatefulWidget {
+  const _EqualizerBars();
+
+  @override
+  State<_EqualizerBars> createState() => _EqualizerBarsState();
+}
+
+class _EqualizerBarsState extends State<_EqualizerBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _bar(8 + 14 * (t * 0.95).abs()),
+            const SizedBox(width: 2.5),
+            _bar(18 - 12 * ((1 - t) * 0.85).abs()),
+            const SizedBox(width: 2.5),
+            _bar(6 + 16 * ((t * 1.3).clamp(0.0, 1.0))),
+            const SizedBox(width: 2.5),
+            _bar(17 - 10 * (t * 0.75).abs()),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _bar(double h) {
+    return Container(
+      width: 3.2,
+      height: h.clamp(4.0, 22.0),
+      decoration: BoxDecoration(
+        color: SpotifyColors.green,
+        borderRadius: BorderRadius.circular(2),
+        boxShadow: [
+          BoxShadow(
+            color: SpotifyColors.green.withValues(alpha: 0.8),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  _YoutubeResultTile with Multi-Stage Ingestion Pipeline Animation
+// ─────────────────────────────────────────────────────────────────────────────
 class _YoutubeResultTile extends StatelessWidget {
   final YouTubeSearchResult result;
-  final bool                isLoading;
-  final double              progress;
-  final bool                isDone;
-  final bool                isDup;
-  final bool                isPlayingPreview;
-  final bool                isPreviewLoading;
-  final VoidCallback        onPlayPreview;
-  final VoidCallback?       onAdd;
+  final bool isLoading;
+  final double progress;
+  final bool isDone;
+  final bool isDup;
+  final bool isPlayingPreview;
+  final bool isPreviewLoading;
+  final VoidCallback onPlayPreview;
+  final VoidCallback? onAdd;
 
   const _YoutubeResultTile({
     required this.result,
@@ -1290,28 +1785,57 @@ class _YoutubeResultTile extends StatelessWidget {
     required this.onAdd,
   });
 
-  String _getProgressLabel(double p) {
-    if (p < 0.3) return 'Fetching stream URL... ${(p * 100).toInt()}%';
-    if (p < 0.65) return 'Converting to high-quality audio... ${(p * 100).toInt()}%';
-    if (p < 0.9) return 'Uploading to Cloud storage... ${(p * 100).toInt()}%';
-    return 'Finalizing metadata index... ${(p * 100).toInt()}%';
+  String _getStageTitle(double p) {
+    if (p < 0.25) return 'Checking SpotiFLAC Catalog…';
+    if (p < 0.55) return 'Lossless not found — Falling back to YouTube…';
+    if (p < 0.85) return 'Downloading Audio & Transcoding (256k AAC)…';
+    return 'Uploading Artwork & Cloud CDN…';
+  }
+
+  IconData _getStageIcon(double p) {
+    if (p < 0.25) return Icons.search_rounded;
+    if (p < 0.55) return Icons.swap_horiz_rounded;
+    if (p < 0.85) return Icons.album_rounded;
+    return Icons.cloud_upload_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final activeIngest = isLoading && progress > 0.0;
+    final provider = context.watch<IngestionProvider>();
+    final isFallback = provider.fallbackVideoIds.contains(result.videoId);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFF121212),
+        color: activeIngest
+            ? const Color(0xFF121915)
+            : isPlayingPreview
+                ? const Color(0xFF121B16)
+                : const Color(0xFF13161F),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isLoading
-              ? Colors.amber.withValues(alpha: 0.3)
+          color: activeIngest
+              ? const Color(0xFF1DB954).withValues(alpha: 0.7)
               : isPlayingPreview
-                  ? SpotifyColors.green.withValues(alpha: 0.3)
-                  : const Color(0xFF222222),
-          width: 1,
+                  ? SpotifyColors.green.withValues(alpha: 0.6)
+                  : const Color(0xFF222838),
+          width: activeIngest || isPlayingPreview ? 1.5 : 1.0,
         ),
+        boxShadow: [
+          if (activeIngest)
+            BoxShadow(
+              color: const Color(0xFF1DB954).withValues(alpha: 0.2),
+              blurRadius: 16,
+              spreadRadius: 1,
+            )
+          else if (isPlayingPreview)
+            BoxShadow(
+              color: SpotifyColors.green.withValues(alpha: 0.15),
+              blurRadius: 12,
+            ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1319,52 +1843,73 @@ class _YoutubeResultTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                // Thumbnail with custom Play/Pause overlay
+                // Thumbnail with custom Play/Pause / Equalizer overlay
                 Stack(
                   alignment: Alignment.center,
                   children: [
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       child: result.thumbnailUrl.isNotEmpty
                           ? CachedNetworkImage(
-                              imageUrl:   result.thumbnailUrl,
-                              width: 52, height: 52, fit: BoxFit.cover,
+                              imageUrl: result.thumbnailUrl,
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.cover,
                               placeholder: (_, __) => _thumb(),
-                              errorWidget: (_, __, ___) => _thumb())
+                              errorWidget: (_, __, ___) => _thumb(),
+                            )
                           : _thumb(),
                     ),
                     // Darkening overlay
                     Container(
-                      width: 52,
-                      height: 52,
+                      width: 56,
+                      height: 56,
                       decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(8),
+                        color: isPlayingPreview
+                            ? Colors.black.withValues(alpha: 0.6)
+                            : Colors.black.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    // Play icon overlay
-                    GestureDetector(
-                      onTap: onPlayPreview,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: isPlayingPreview ? SpotifyColors.green : Colors.white.withValues(alpha: 0.9),
-                          shape: BoxShape.circle,
-                        ),
-                        child: isPreviewLoading
-                            ? const Padding(
-                                padding: EdgeInsets.all(7),
-                                child: CircularProgressIndicator(
-                                    color: Colors.black, strokeWidth: 2),
-                              )
-                            : Icon(
-                                isPlayingPreview ? Icons.stop : Icons.play_arrow,
-                                color: Colors.black,
-                                size: 16,
+                    // If preview is playing, show live dancing equalizer!
+                    if (isPlayingPreview && !isPreviewLoading)
+                      const _EqualizerBars()
+                    else
+                      // Play / Loading button overlay
+                      GestureDetector(
+                        onTap: onPlayPreview,
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: isPlayingPreview
+                                ? SpotifyColors.green
+                                : Colors.white.withValues(alpha: 0.92),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: 6,
                               ),
+                            ],
+                          ),
+                          child: isPreviewLoading
+                              ? const Padding(
+                                  padding: EdgeInsets.all(7),
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 2.2,
+                                  ),
+                                )
+                              : Icon(
+                                  isPlayingPreview
+                                      ? Icons.stop_rounded
+                                      : Icons.play_arrow_rounded,
+                                  color: Colors.black,
+                                  size: 18,
+                                ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(width: 14),
@@ -1373,64 +1918,136 @@ class _YoutubeResultTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(result.title,
-                          style: SpotifyFonts.regular( color: Colors.white, fontSize: 13,
-                              fontWeight: FontWeight.bold),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
                       Text(
-                          '${result.artist.isNotEmpty ? result.artist : "Unknown Artist"}'
-                          '  ·  ${result.formattedDuration}',
-                          style: SpotifyFonts.regular( color: SpotifyColors.lightGrey, fontSize: 11),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                        result.title,
+                        style: SpotifyFonts.bold(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isFallback
+                                  ? Colors.amber.withValues(alpha: 0.15)
+                                  : const Color(0xFF1E2433),
+                              borderRadius: BorderRadius.circular(4),
+                              border: isFallback
+                                  ? Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 0.8)
+                                  : null,
+                            ),
+                            child: Text(
+                              isFallback ? 'YT FALLBACK' : 'LOSSLESS',
+                              style: SpotifyFonts.bold(
+                                color: isFallback ? Colors.amber : SpotifyColors.green,
+                                fontSize: 8.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${result.artist.isNotEmpty ? result.artist : "Unknown Artist"} • ${result.formattedDuration}',
+                              style: SpotifyFonts.regular(
+                                color: SpotifyColors.lightGrey,
+                                fontSize: 11.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 10),
                 // Add action button
                 _TrailingButton(
-                    isLoading: isLoading && progress == 0.0, isDone: isDone, isDup: isDup, onTap: onAdd),
+                  isLoading: isLoading && progress == 0.0,
+                  isDone: isDone,
+                  isDup: isDup,
+                  onTap: onAdd,
+                ),
               ],
             ),
 
-            // Simulated Ingestion Progress Bar
-            if (isLoading && progress > 0.0) ...[
+            // ── Live Multi-Stage Animated Ingestion Progress ──────────────────
+            if (activeIngest) ...[
               const SizedBox(height: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: const Color(0xFF222222),
-                      color: Colors.amber,
-                      minHeight: 5,
+                  Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A212E),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        return Stack(
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              width: (constraints.maxWidth * progress.clamp(0.03, 1.0)),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF1DB954),
+                                    Color(0xFF1ED760),
+                                    Color(0xFF00E5FF),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF1DB954).withValues(alpha: 0.6),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          _getProgressLabel(progress),
-                          style: SpotifyFonts.regular( 
-                            color: Colors.amber,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getStageIcon(progress),
+                            size: 13,
+                            color: const Color(0xFF00E5FF),
+                          )
+                              .animate(onPlay: (c) => c.repeat(reverse: true))
+                              .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.2, 1.2)),
+                          const SizedBox(width: 6),
+                          Text(
+                            _getStageTitle(progress),
+                            style: SpotifyFonts.bold(
+                              color: const Color(0xFF00E5FF),
+                              fontSize: 11,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        ],
                       ),
                       Text(
                         '${(progress * 100).toInt()}%',
-                        style: SpotifyFonts.regular( 
-                          color: Colors.amber,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                        style: SpotifyFonts.bold(
+                          color: SpotifyColors.green,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -1445,52 +2062,124 @@ class _YoutubeResultTile extends StatelessWidget {
   }
 
   Widget _thumb() => Container(
-        width: 52, height: 52, color: SpotifyColors.surface,
-        child: const Icon(Icons.music_note, color: SpotifyColors.lightGrey, size: 20));
+        width: 56,
+        height: 56,
+        color: SpotifyColors.surface,
+        child: const Icon(Icons.music_note, color: SpotifyColors.lightGrey, size: 22),
+      );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  _TrailingButton with Scale Bounce Animation on Completion
 // ─────────────────────────────────────────────────────────────────────────────
 class _TrailingButton extends StatelessWidget {
   final bool isLoading, isDone, isDup;
   final VoidCallback? onTap;
-  const _TrailingButton(
-      {required this.isLoading, required this.isDone,
-       required this.isDup,     required this.onTap});
+
+  const _TrailingButton({
+    required this.isLoading,
+    required this.isDone,
+    required this.isDup,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const SizedBox(width: 28, height: 28,
-          child: CircularProgressIndicator(color: SpotifyColors.green, strokeWidth: 2));
+      return Container(
+        width: 32,
+        height: 32,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: SpotifyColors.green.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+        ),
+        child: const CircularProgressIndicator(
+          color: SpotifyColors.green,
+          strokeWidth: 2.2,
+        ),
+      );
     }
     if (isDone) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
-          color:        (isDup ? const Color(0xFF1A78C2) : SpotifyColors.green)
-                            .withValues(alpha: 0.08),
+          color: (isDup ? const Color(0xFF1A78C2) : SpotifyColors.green)
+              .withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
-          border:       Border.all(
-              color: isDup ? const Color(0xFF1A78C2) : SpotifyColors.green,
-              width: 1),
+          border: Border.all(
+            color: isDup ? const Color(0xFF1A78C2) : SpotifyColors.green,
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (isDup ? const Color(0xFF1A78C2) : SpotifyColors.green)
+                  .withValues(alpha: 0.25),
+              blurRadius: 8,
+            ),
+          ],
         ),
-        child: Text(isDup ? 'In Library' : 'Added ✓',
-            style: SpotifyFonts.regular( 
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_rounded,
+              color: isDup ? const Color(0xFF1A78C2) : SpotifyColors.green,
+              size: 13,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              isDup ? 'In Library' : 'Added ✓',
+              style: SpotifyFonts.bold(
                 color: isDup ? const Color(0xFF1A78C2) : SpotifyColors.green,
-                fontSize: 10, fontWeight: FontWeight.bold)),
-      );
+                fontSize: 10.5,
+              ),
+            ),
+          ],
+        ),
+      )
+          .animate()
+          .scale(
+            begin: const Offset(0.7, 0.7),
+            end: const Offset(1.0, 1.0),
+            curve: Curves.elasticOut,
+            duration: 450.ms,
+          );
     }
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
         decoration: BoxDecoration(
-          border:       Border.all(color: SpotifyColors.green, width: 1.2),
+          gradient: LinearGradient(
+            colors: [
+              SpotifyColors.green.withValues(alpha: 0.2),
+              SpotifyColors.green.withValues(alpha: 0.08),
+            ],
+          ),
+          border: Border.all(color: SpotifyColors.green, width: 1.3),
           borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: SpotifyColors.green.withValues(alpha: 0.12),
+              blurRadius: 6,
+            ),
+          ],
         ),
-        child: Text('Add',
-            style: SpotifyFonts.regular( 
-                color: SpotifyColors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.add_rounded, color: SpotifyColors.green, size: 14),
+            const SizedBox(width: 3),
+            Text(
+              'Add',
+              style: SpotifyFonts.bold(
+                color: SpotifyColors.green,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1502,70 +2191,195 @@ class _TrailingButton extends StatelessWidget {
 
 class _PlaylistDropdown extends StatelessWidget {
   final List<_Playlist> playlists;
-  final String?             selected;
+  final String? selected;
   final ValueChanged<String?> onChanged;
 
-  const _PlaylistDropdown(
-      {required this.playlists, required this.selected, required this.onChanged});
+  const _PlaylistDropdown({
+    required this.playlists,
+    required this.selected,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final effectiveValue = (selected == null ||
+            selected == '_create_new_' ||
+            playlists.any((p) => p.id == selected))
+        ? selected
+        : null;
+
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color:        const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border:       Border.all(color: const Color(0xFF2E2E2E)),
+        color: const Color(0xFF161A24),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF262E40)),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String?>(
-          value:         selected,
-          isExpanded:    true,
-          dropdownColor: const Color(0xFF161616),
-          style:         SpotifyFonts.regular( color: Colors.white, fontSize: 13),
-          hint: Text('Select Playlist Target (Optional)',
-              style: SpotifyFonts.regular( color: SpotifyColors.lightGrey, fontSize: 13)),
-          icon: const Icon(Icons.keyboard_arrow_down, color: SpotifyColors.lightGrey),
+          value: effectiveValue,
+          isExpanded: true,
+          dropdownColor: const Color(0xFF131720),
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: SpotifyColors.green,
+            size: 22,
+          ),
+          selectedItemBuilder: (context) {
+            return [
+              _buildSelectedRow('Add to Library Only', Icons.library_music_rounded, isDefault: true),
+              _buildSelectedRow('Create new playlist...', Icons.add_circle_outline_rounded, isCreate: true),
+              ...playlists.map((p) => _buildSelectedRow(p.name, Icons.playlist_play_rounded)),
+            ];
+          },
           items: [
             DropdownMenuItem<String?>(
               value: null,
-              child: Text('Add to Library Only',
-                  style: SpotifyFonts.regular( color: SpotifyColors.lightGrey, fontSize: 13))),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.library_music_rounded, color: Colors.white70, size: 16),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Add to Library Only',
+                    style: SpotifyFonts.regular(color: Colors.white70, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
             DropdownMenuItem<String?>(
               value: '_create_new_',
               child: Row(
                 children: [
-                  const Icon(Icons.add, color: SpotifyColors.green, size: 18),
-                  const SizedBox(width: 8),
-                  Text('Create new playlist...',
-                      style: SpotifyFonts.bold(color: SpotifyColors.green, fontSize: 13)),
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: SpotifyColors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.add_rounded, color: SpotifyColors.green, size: 16),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Create new playlist...',
+                    style: SpotifyFonts.bold(color: SpotifyColors.green, fontSize: 13),
+                  ),
                 ],
               ),
             ),
-            ...playlists.map((p) => DropdownMenuItem<String?>(
-              value: p.id,
-              child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis))),
+            ...playlists.map(
+              (p) => DropdownMenuItem<String?>(
+                value: p.id,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E2433),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.playlist_play_rounded, color: SpotifyColors.green, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        p.name,
+                        style: SpotifyFonts.regular(color: Colors.white, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
           onChanged: onChanged,
         ),
       ),
     );
   }
+
+  Widget _buildSelectedRow(String title, IconData icon, {bool isDefault = false, bool isCreate = false}) {
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isCreate
+                  ? [const Color(0xFF1DB954), const Color(0xFF15883E)]
+                  : isDefault
+                      ? [const Color(0xFF2B3346), const Color(0xFF1F2433)]
+                      : [const Color(0xFF1DB954), const Color(0xFF0F5A28)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DESTINATION PLAYLIST',
+                style: SpotifyFonts.bold(
+                  color: SpotifyColors.lightGrey,
+                  fontSize: 9,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                title,
+                style: SpotifyFonts.bold(
+                  color: isCreate ? SpotifyColors.green : Colors.white,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _GreenButton extends StatelessWidget {
-  final IconData  icon;
-  final String    label;
-  final bool      loading;
+  final IconData? icon;
+  final String label;
+  final bool loading;
   final VoidCallback? onTap;
 
-  const _GreenButton(
-      {required this.icon, required this.label,
-       this.loading = false, this.onTap});
+  const _GreenButton({
+    this.icon,
+    required this.label,
+    this.loading = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final active = onTap != null;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -1573,48 +2387,71 @@ class _GreenButton extends StatelessWidget {
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          color:        onTap != null
-              ? SpotifyColors.green : SpotifyColors.green.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: onTap != null
+          gradient: active
+              ? const LinearGradient(
+                  colors: [Color(0xFF1DB954), Color(0xFF15883E)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: active ? null : const Color(0xFF1E2433),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: active
               ? [
                   BoxShadow(
-                    color: SpotifyColors.green.withValues(alpha: 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
+                    color: SpotifyColors.green.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
                 ]
               : null,
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (loading)
-            const SizedBox(width: 16, height: 16,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (loading)
+              const SizedBox(
+                width: 18,
+                height: 18,
                 child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2.2))
-          else
-            Icon(icon, color: Colors.white, size: 16),
-          const SizedBox(width: 6),
-          Text(label,
-              style: SpotifyFonts.regular( 
-                  color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-        ]),
+                  color: Colors.black,
+                  strokeWidth: 2.2,
+                ),
+              )
+            else if (icon != null) ...[
+              Icon(icon, color: active ? Colors.black : Colors.white38, size: 18),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              label,
+              style: SpotifyFonts.bold(
+                color: active ? Colors.black : Colors.white38,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _GreenOutlineButton extends StatelessWidget {
-  final IconData  icon;
-  final String    label;
+  final IconData icon;
+  final String label;
   final VoidCallback? onTap;
 
-  const _GreenOutlineButton(
-      {required this.icon, required this.label, this.onTap});
+  const _GreenOutlineButton({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final active = onTap != null;
-    final color = active ? SpotifyColors.green : SpotifyColors.lightGrey;
+    final color = active ? SpotifyColors.green : SpotifyColors.lightGrey.withValues(alpha: 0.5);
 
     return GestureDetector(
       onTap: onTap,
@@ -1622,17 +2459,28 @@ class _GreenOutlineButton extends StatelessWidget {
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border:       Border.all(
-              color: active ? SpotifyColors.green : const Color(0xFF2E2E2E), width: 1.2),
+          color: active ? const Color(0xFF161A24) : const Color(0xFF10121A),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? SpotifyColors.green.withValues(alpha: 0.6) : const Color(0xFF232B3E),
+            width: 1.2,
+          ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 6),
-          Text(label,
-              style: SpotifyFonts.regular( 
-                  color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: SpotifyFonts.bold(
+                color: color,
+                fontSize: 12.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1647,20 +2495,33 @@ class _EmptyHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: SpotifyColors.lightGrey.withValues(alpha: 0.2), size: 64),
-          const SizedBox(height: 20),
-          Text(title,
-              style: SpotifyFonts.regular( color: Colors.white, fontSize: 16,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Text(body,
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: SpotifyColors.lightGrey.withValues(alpha: 0.2), size: 48),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: SpotifyFonts.bold(
+                color: Colors.white,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              body,
               textAlign: TextAlign.center,
-              style: SpotifyFonts.regular( 
-                  color: SpotifyColors.lightGrey, fontSize: 12, height: 1.5)),
-        ]),
+              style: SpotifyFonts.regular(
+                color: SpotifyColors.lightGrey,
+                fontSize: 11.5,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
