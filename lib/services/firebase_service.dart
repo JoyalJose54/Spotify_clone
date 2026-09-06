@@ -277,8 +277,7 @@ class FirebaseService {
   }) async {
     try {
       await _ensureLoggedIn();
-      final uid = _auth.currentUser?.uid;
-      if (uid == null) return null;
+      final uid = _auth.currentUser?.uid ?? 'local_user';
 
       final doc = await _db.collection('playlists').add({
         'name'          : name,
@@ -286,6 +285,8 @@ class FirebaseService {
         'owner'         : uid,
         'creator_id'    : uid,
         'trackIds'      : trackIds,
+        'track_ids'     : trackIds,
+        'songIds'       : trackIds,
         'likes'         : 0,
         'isSpotifyOwned': false,
         'createdAt'     : FieldValue.serverTimestamp(),
@@ -300,6 +301,7 @@ class FirebaseService {
 
   static Future<void> deletePlaylist(String playlistId) async {
     try {
+      await _ensureLoggedIn();
       await _db.collection('playlists').doc(playlistId).delete();
       print('[FirebaseService] Playlist deleted: $playlistId');
     } catch (e) {
@@ -310,6 +312,7 @@ class FirebaseService {
 
   static Future<void> renamePlaylist(String playlistId, String newName) async {
     try {
+      await _ensureLoggedIn();
       await _db.collection('playlists').doc(playlistId).update({
         'name': newName,
       });
@@ -327,7 +330,7 @@ class FirebaseService {
       'trackIds': FieldValue.arrayUnion([trackId]),
       'track_ids': FieldValue.arrayUnion([trackId]),
       'songIds': FieldValue.arrayUnion([trackId]),
-    }).timeout(const Duration(seconds: 30));
+    });
   }
 
   /// Add multiple tracks to a playlist.
@@ -338,7 +341,7 @@ class FirebaseService {
       'trackIds': FieldValue.arrayUnion(trackIds),
       'track_ids': FieldValue.arrayUnion(trackIds),
       'songIds': FieldValue.arrayUnion(trackIds),
-    }).timeout(const Duration(seconds: 30));
+    });
   }
 
   /// Remove multiple tracks from a playlist.
@@ -349,7 +352,7 @@ class FirebaseService {
       'trackIds': FieldValue.arrayRemove(trackIds),
       'track_ids': FieldValue.arrayRemove(trackIds),
       'songIds': FieldValue.arrayRemove(trackIds),
-    }).timeout(const Duration(seconds: 30));
+    });
   }
 
   /// Fetch a lightweight list of user-created playlists (id + name only).
@@ -376,7 +379,7 @@ class FirebaseService {
       'trackIds': FieldValue.arrayRemove([trackId]),
       'track_ids': FieldValue.arrayRemove([trackId]),
       'songIds': FieldValue.arrayRemove([trackId]),
-    }).timeout(const Duration(seconds: 30));
+    });
   }
 
   /// Delete a track entirely from the database and remove references in all playlists.
@@ -445,13 +448,17 @@ class FirebaseService {
 
   /// Reorder tracks in a playlist by saving the entire new ordered list.
   static Future<void> reorderPlaylistTracks(String playlistId, List<String> newTrackIds) async {
+    await _ensureLoggedIn();
     await _db.collection('playlists').doc(playlistId).update({
       'trackIds': newTrackIds,
+      'track_ids': newTrackIds,
+      'songIds': newTrackIds,
     });
   }
 
   /// Update playlist name and description together.
   static Future<void> updatePlaylistDetails(String playlistId, {required String name, String description = ''}) async {
+    await _ensureLoggedIn();
     await _db.collection('playlists').doc(playlistId).update({
       'name': name,
       'description': description,
@@ -761,17 +768,27 @@ class FirebaseService {
         .set({'followedArtists': artistIds}, SetOptions(merge: true));
   }
 
-  /// Ensures a Firebase user exists.
+  /// Ensures a Firebase user exists if auth is available and configured,
+  /// but never throws or blocks operations if anonymous auth fails (e.g. invalid API key or offline).
   static Future<void> _ensureLoggedIn() async {
     if (_auth.currentUser == null) {
-      await signInAnonymously();
+      try {
+        await signInAnonymously();
+      } catch (e) {
+        debugPrint('[FirebaseService] Optional anonymous sign-in skipped/failed: $e');
+      }
     }
   }
 
-  static Future<UserCredential> signInAnonymously() async {
-    print('[FirebaseService] Signing in anonymously...');
-    final cred = await _auth.signInAnonymously();
-    print('[FirebaseService] Signed in: ${cred.user?.uid}');
-    return cred;
+  static Future<UserCredential?> signInAnonymously() async {
+    try {
+      print('[FirebaseService] Signing in anonymously...');
+      final cred = await _auth.signInAnonymously();
+      print('[FirebaseService] Signed in: ${cred.user?.uid}');
+      return cred;
+    } catch (e) {
+      print('[FirebaseService] signInAnonymously error: $e');
+      return null;
+    }
   }
 }

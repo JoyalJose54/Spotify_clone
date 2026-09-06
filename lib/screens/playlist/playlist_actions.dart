@@ -70,14 +70,21 @@ class _AddSongsScreenState extends State<AddSongsScreen> {
   Future<void> _add(Song song) async {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _adding.add(song.id));
-    await FirebaseService.addTrackToPlaylist(widget.playlistId, song.id);
-    if (!mounted) return;
-    // Remove from list after adding
-    setState(() {
-      _adding.remove(song.id);
-      _allSongs.removeWhere((s) => s.id == song.id);
-      _filtered.removeWhere((s) => s.id == song.id);
-    });
+    try {
+      await FirebaseService.addTrackToPlaylist(widget.playlistId, song.id);
+      if (!mounted) return;
+      SpotifyToast.show(context, 'Added "${song.title}" to playlist', icon: Icons.playlist_add_check);
+      // Remove from list after adding
+      setState(() {
+        _adding.remove(song.id);
+        _allSongs.removeWhere((s) => s.id == song.id);
+        _filtered.removeWhere((s) => s.id == song.id);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _adding.remove(song.id));
+      SpotifyToast.show(context, 'Failed to add song: $e', icon: Icons.error_outline, iconColor: Colors.redAccent);
+    }
   }
 
   @override
@@ -466,13 +473,20 @@ class _NameDetailsSheetState extends State<_NameDetailsSheet> {
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) return;
     setState(() => _saving = true);
-    await FirebaseService.updatePlaylistDetails(
-      widget.playlist.id,
-      name: _nameCtrl.text.trim(),
-      description: _descCtrl.text.trim(),
-    );
-    if (!mounted) return;
-    Navigator.pop(context);
+    try {
+      await FirebaseService.updatePlaylistDetails(
+        widget.playlist.id,
+        name: _nameCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      SpotifyToast.show(context, 'Playlist details saved', icon: Icons.check);
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      SpotifyToast.show(context, 'Failed to update details: $e', icon: Icons.error_outline, iconColor: Colors.redAccent);
+    }
   }
 
   Future<void> _deletePlaylist() async {
@@ -500,10 +514,16 @@ class _NameDetailsSheetState extends State<_NameDetailsSheet> {
       ),
     );
     if (confirm == true && mounted) {
-      await FirebaseService.deletePlaylist(widget.playlist.id);
-      if (!mounted) return;
-      Navigator.pop(context); // close sheet
-      Navigator.pop(context); // go back from playlist detail
+      try {
+        await FirebaseService.deletePlaylist(widget.playlist.id);
+        if (!mounted) return;
+        SpotifyToast.show(context, 'Playlist "${widget.playlist.name}" deleted', icon: Icons.delete_outline);
+        Navigator.pop(context); // close sheet
+        Navigator.pop(context); // go back from playlist detail
+      } catch (e) {
+        if (!mounted) return;
+        SpotifyToast.show(context, 'Failed to delete playlist: $e', icon: Icons.error_outline, iconColor: Colors.redAccent);
+      }
     }
   }
 

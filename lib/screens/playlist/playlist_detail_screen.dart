@@ -11,6 +11,7 @@ import '../player/now_playing_screen.dart';
 import 'playlist_actions.dart';
 
 import '../../widgets/playlist_collage.dart';
+import '../../widgets/save_in_playlist_sheet.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
@@ -487,13 +488,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   void _executeMultiDelete(BuildContext context) async {
     FocusManager.instance.primaryFocus?.unfocus();
+    final count = _selectedSongIds.length;
+    final isSingle = count == 1;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SpotifyColors.surface,
-        title: Text('Remove from playlist', style: SpotifyFonts.title(color: Colors.white, fontSize: 18)),
+        title: Text(isSingle ? 'Remove song' : 'Remove from playlist', style: SpotifyFonts.title(color: Colors.white, fontSize: 18)),
         content: Text(
-          'Are you sure you want to remove the ${_selectedSongIds.length} selected songs from this playlist?',
+          isSingle
+              ? 'Are you sure you want to remove this song from this playlist?'
+              : 'Are you sure you want to remove the $count selected songs from this playlist?',
           style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 14),
         ),
         actions: [
@@ -540,7 +545,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       if (context.mounted) {
         SpotifyToast.show(
           context,
-          'Successfully removed ${toRemoveIds.length} song(s) from playlist',
+          isSingle ? 'Removed song from playlist' : 'Successfully removed $count songs from playlist',
           icon: Icons.delete_outline,
         );
       }
@@ -636,15 +641,34 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           case PlaylistSortOrder.artist:
             return aArtistLower.compareTo(bArtistLower);
           case PlaylistSortOrder.album:
-            return a.album.toLowerCase().compareTo(b.album.toLowerCase());
+            final albumA = a.album.trim().toLowerCase();
+            final albumB = b.album.trim().toLowerCase();
+            if (albumA.isEmpty && albumB.isNotEmpty) return 1;
+            if (albumA.isNotEmpty && albumB.isEmpty) return -1;
+            final cmp = albumA.compareTo(albumB);
+            if (cmp != 0) return cmp;
+            return aTitleLower.compareTo(bTitleLower);
           case PlaylistSortOrder.recentlyAdded:
-            final timeA = a.createdAt;
-            final timeB = b.createdAt;
-            if (timeA != null && timeB != null) return timeB.compareTo(timeA);
-            if (timeA != null) return -1;
-            if (timeB != null) return 1;
-            return b.id.compareTo(a.id);
+            if (widget.playlist.id == 'all_songs') {
+              final timeA = a.createdAt;
+              final timeB = b.createdAt;
+              if (timeA != null && timeB != null) return timeB.compareTo(timeA);
+              if (timeA != null) return -1;
+              if (timeB != null) return 1;
+              return aTitleLower.compareTo(bTitleLower);
+            } else {
+              final idxA = songs.indexOf(a);
+              final idxB = songs.indexOf(b);
+              if (idxA != -1 && idxB != -1) return idxB.compareTo(idxA);
+              final timeA = a.createdAt;
+              final timeB = b.createdAt;
+              if (timeA != null && timeB != null) return timeB.compareTo(timeA);
+              return aTitleLower.compareTo(bTitleLower);
+            }
           case PlaylistSortOrder.custom:
+            final idxA = songs.indexOf(a);
+            final idxB = songs.indexOf(b);
+            if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
             return aTitleLower.compareTo(bTitleLower);
         }
       });
@@ -655,25 +679,47 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     final sorted = List<Song>.from(filtered);
     switch (_sortOrder) {
       case PlaylistSortOrder.title:
-        sorted.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        sorted.sort((a, b) {
+          final cmp = a.title.trim().toLowerCase().compareTo(b.title.trim().toLowerCase());
+          if (cmp != 0) return cmp;
+          return a.artist.trim().toLowerCase().compareTo(b.artist.trim().toLowerCase());
+        });
         break;
       case PlaylistSortOrder.artist:
-        sorted.sort((a, b) => a.artist.toLowerCase().compareTo(b.artist.toLowerCase()));
+        sorted.sort((a, b) {
+          final cmp = a.artist.trim().toLowerCase().compareTo(b.artist.trim().toLowerCase());
+          if (cmp != 0) return cmp;
+          return a.title.trim().toLowerCase().compareTo(b.title.trim().toLowerCase());
+        });
         break;
       case PlaylistSortOrder.album:
-        sorted.sort((a, b) => a.album.toLowerCase().compareTo(b.album.toLowerCase()));
+        sorted.sort((a, b) {
+          final albumA = a.album.trim().toLowerCase();
+          final albumB = b.album.trim().toLowerCase();
+          if (albumA.isEmpty && albumB.isNotEmpty) return 1;
+          if (albumA.isNotEmpty && albumB.isEmpty) return -1;
+          final cmp = albumA.compareTo(albumB);
+          if (cmp != 0) return cmp;
+          if (a.trackNumber != b.trackNumber) return a.trackNumber.compareTo(b.trackNumber);
+          return a.title.trim().toLowerCase().compareTo(b.title.trim().toLowerCase());
+        });
         break;
       case PlaylistSortOrder.recentlyAdded:
-        sorted.sort((a, b) {
-          final timeA = a.createdAt;
-          final timeB = b.createdAt;
-          if (timeA != null && timeB != null) {
-            return timeB.compareTo(timeA); // Newest first
-          }
-          if (timeA != null) return -1;
-          if (timeB != null) return 1;
-          return b.id.compareTo(a.id);
-        });
+        if (widget.playlist.id == 'all_songs') {
+          sorted.sort((a, b) {
+            final timeA = a.createdAt;
+            final timeB = b.createdAt;
+            if (timeA != null && timeB != null) return timeB.compareTo(timeA);
+            if (timeA != null) return -1;
+            if (timeB != null) return 1;
+            return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          });
+        } else {
+          // For playlists: songs arrive from Firestore in the order of pl.trackIds
+          // (index 0 is oldest added, last index is most recently added).
+          // Reversing places the most recently added songs at the very top.
+          return sorted.reversed.toList();
+        }
         break;
       case PlaylistSortOrder.custom:
         break;
@@ -982,11 +1028,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                       );
                                     }),
                                     const SizedBox(width: 8),
-                                    _pill(Icons.import_export, 'Sort', onTap: () {
-                                      showSortSheet(context, _sortOrder, (order) {
-                                        setState(() => _sortOrder = order);
-                                      });
-                                    }),
+                                    _pill(
+                                      Icons.import_export,
+                                      _sortLabel,
+                                      isActive: _sortOrder != PlaylistSortOrder.custom,
+                                      onTap: () {
+                                        showSortSheet(context, _sortOrder, (order) {
+                                          setState(() => _sortOrder = order);
+                                        });
+                                      },
+                                    ),
                                     const SizedBox(width: 8),
                                     _pill(Icons.info_outline, 'Name and details', onTap: () {
                                       showNameDetailsSheet(context, widget.playlist, rawSongs);
@@ -1108,20 +1159,41 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
 
 
+  String get _sortLabel {
+    switch (_sortOrder) {
+      case PlaylistSortOrder.custom:
+        return 'Sort';
+      case PlaylistSortOrder.title:
+        return 'Title';
+      case PlaylistSortOrder.artist:
+        return 'Artist';
+      case PlaylistSortOrder.album:
+        return 'Album';
+      case PlaylistSortOrder.recentlyAdded:
+        return 'Recently added';
+    }
+  }
+
   Widget _miniThumb() => Container(width: 36, height: 36, color: SpotifyColors.surface,
       child: const Icon(Icons.music_note, color: SpotifyColors.lightGrey, size: 16));
 
-  Widget _pill(IconData icon, String label, {required VoidCallback onTap}) => GestureDetector(
+  Widget _pill(IconData icon, String label, {required VoidCallback onTap, bool isActive = false}) => GestureDetector(
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(20),
+        color: isActive ? SpotifyColors.green.withValues(alpha: 0.15) : const Color(0xFF2A2A2A),
+        border: isActive ? Border.all(color: SpotifyColors.green, width: 1) : null,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: Colors.white, size: 15),
+        Icon(icon, color: isActive ? SpotifyColors.green : Colors.white, size: 15),
         const SizedBox(width: 6),
-        Text(label, style: SpotifyFonts.regular( color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(label, style: SpotifyFonts.regular(
+          color: isActive ? SpotifyColors.green : Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        )),
       ]),
     ),
   );
@@ -1297,7 +1369,37 @@ class _TrackTile extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ] else ...[
-            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.playlist_add, color: Colors.white),
+              title: Text('Add to other playlist', style: SpotifyFonts.regular(color: Colors.white, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(ctx);
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => SaveInPlaylistSheet(song: song),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+              title: Text('Remove from this playlist', style: SpotifyFonts.regular(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  await FirebaseService.removeTrackFromPlaylist(playlistId, song.id);
+                  if (context.mounted) {
+                    SpotifyToast.show(context, 'Removed "${song.title}" from playlist', icon: Icons.delete_outline);
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    SpotifyToast.show(context, 'Failed to remove: $e', icon: Icons.error_outline, iconColor: Colors.redAccent);
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 8),
           ],
         ],
       ),

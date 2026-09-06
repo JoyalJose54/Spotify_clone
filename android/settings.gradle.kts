@@ -12,15 +12,28 @@ pluginManagement {
 
     repositories {
         google()
-        mavenCentral()
-        gradlePluginPortal()
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://repo1.maven.org/maven2") }
+        maven {
+            url = uri("https://plugins.gradle.org/m2/")
+            content {
+                includeGroup("org.gradle.kotlin.kotlin-dsl")
+                includeGroup("org.gradle.kotlin")
+                includeGroup("dev.flutter.flutter-plugin-loader")
+                includeGroup("com.android.application")
+                includeGroup("com.google.gms")
+            }
+        }
     }
 }
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    id("com.android.application") version "9.0.1" apply false
+    id("org.jetbrains.kotlin.android") version "2.3.20" apply false
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
+
 
 include(":app")

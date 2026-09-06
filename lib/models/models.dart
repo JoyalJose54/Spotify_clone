@@ -95,10 +95,18 @@ class Song {
     }
 
     DateTime? createdAt;
-    if (d['createdAt'] is Timestamp) {
-      createdAt = (d['createdAt'] as Timestamp).toDate();
-    } else if (d['createdAt'] is String) {
-      createdAt = DateTime.tryParse(d['createdAt'] as String);
+    final rawDate = d['createdAt'] ?? d['addedAt'] ?? d['timestamp'];
+    if (rawDate is Timestamp) {
+      createdAt = rawDate.toDate();
+    } else if (rawDate is String) {
+      createdAt = DateTime.tryParse(rawDate);
+    } else if (rawDate is num) {
+      final val = rawDate.toInt();
+      if (val > 1000000000000) {
+        createdAt = DateTime.fromMillisecondsSinceEpoch(val);
+      } else if (val > 0) {
+        createdAt = DateTime.fromMillisecondsSinceEpoch(val * 1000);
+      }
     }
 
     return Song(
@@ -188,7 +196,18 @@ class Playlist {
     DocumentSnapshot doc, {
     List<Song> resolvedTracks = const [],
   }) {
-    final d = doc.data() as Map<String, dynamic>;
+    final raw = doc.data();
+    final d = (raw != null && raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
+
+    List<String> rawIds = [];
+    if (d['trackIds'] is List) {
+      rawIds = List<String>.from(d['trackIds']);
+    } else if (d['track_ids'] is List) {
+      rawIds = List<String>.from(d['track_ids']);
+    } else if (d['songIds'] is List) {
+      rawIds = List<String>.from(d['songIds']);
+    }
+
     return Playlist(
       id          : doc.id,
       name        : d['name']        as String? ?? 'Untitled Playlist',
@@ -196,7 +215,7 @@ class Playlist {
       imageUrl    : d['imageUrl']    as String? ?? '',
       owner       : d['owner']       as String? ?? 'You',
       likes       : (d['likes'] as num?)?.toInt() ?? 0,
-      trackIds    : {...List<String>.from(d['trackIds'] ?? []), ...List<String>.from(d['track_ids'] ?? []), ...List<String>.from(d['songIds'] ?? [])}.toList(),
+      trackIds    : rawIds,
       tracks      : resolvedTracks,
       isSpotifyOwned: d['isSpotifyOwned'] as bool? ?? false,
       createdAt   : (d['createdAt'] as Timestamp?)?.toDate(),
