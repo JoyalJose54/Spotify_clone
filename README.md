@@ -368,7 +368,7 @@ Contributions, feedback, and suggestions are welcome!
 
 <div align="center">
 
-Crafted with ❤️ by [Joyal Jose](https://github.com/JoyalJose54)
+Crafted  by [Joyal Jose](https://github.com/JoyalJose54)
 
 ⭐ **Star this repository if you enjoyed building or exploring this project!**
 
