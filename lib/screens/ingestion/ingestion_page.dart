@@ -94,7 +94,7 @@ class _IngestionPageState extends State<IngestionPage>
               style: SpotifyFonts.regular(color: Colors.white, fontSize: 14),
               cursorColor: SpotifyColors.green,
               decoration: InputDecoration(
-                hintText: 'https://spotify-ingestion-backend.onrender.com',
+                hintText: 'http://127.0.0.1:8080 (Termux / Local)',
                 hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 13),
                 labelText: 'Backend Server URL',
                 labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 12),
@@ -114,10 +114,10 @@ class _IngestionPageState extends State<IngestionPage>
         actions: [
           TextButton(
             onPressed: () {
-              ctrl.text = 'https://spotify-ingestion-backend.onrender.com';
+              ctrl.text = 'http://127.0.0.1:8080';
             },
             child: Text(
-              'Use Cloud (Render)',
+              'Use Termux (Local)',
               style: SpotifyFonts.regular(color: SpotifyColors.green, fontWeight: FontWeight.bold),
             ),
           ),

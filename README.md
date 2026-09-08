@@ -74,7 +74,7 @@
 - **Tier-1 SpotiFLAC Engine**: Direct high-quality lossless track retrieval with automatic fallback to YouTube via `yt-dlp`.
 - **Shazam Audio Fingerprinting**: Automated track recognition, artist normalization, and official album art tagging.
 - **Memory-Safe Architecture**: Bound <150MB footprint with single-thread `ffmpeg`, garbage collector cycles, and Gunicorn request recycling.
-- **Universal Container**: Ready for deployment on Docker, Hugging Face Spaces (16GB RAM), and Render.
+- **Flexible Deployment**: Ready for deployment on Termux (Android), Docker, or local background service.
 
 </td>
 </tr>
@@ -307,7 +307,7 @@ Spotify_clone/
 ├── cloud_functions/                       # Python Ingestion & Processing Microservice
 │   ├── main.py                            # Flask server entrypoint & API endpoints
 │   ├── requirements.txt                   # Microservice dependencies
-│   ├── Dockerfile                         # Container definition for HF Spaces / Render
+│   ├── Dockerfile                         # Container definition for Docker deployments
 │   └── .env.example                       # Environment variables template
 │
 ├── database/                              # Database maintenance & ingestion utilities

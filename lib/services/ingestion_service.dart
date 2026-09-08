@@ -7,9 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Backend base URL – Render cloud service (or local override)
+//  Backend base URL – Termux / Local service (or custom override)
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'https://spotify-ingestion-backend.onrender.com');
+const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'http://127.0.0.1:8080');
 
 class IngestionResult {
   final bool   success;
@@ -93,8 +93,8 @@ class IngestionService {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('backend_url')?.trim();
     if (saved != null && saved.isNotEmpty) {
-      // Auto-migrate old / dead URL if user had saved it previously
-      if (saved.contains('spotify-clone-uehl.onrender.com')) {
+      // Auto-migrate old onrender.com URLs if previously saved
+      if (saved.contains('onrender.com')) {
         await prefs.setString('backend_url', _kBackendBase);
         return _kBackendBase;
       }
