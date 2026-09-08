@@ -203,7 +203,7 @@ PORT=7860
 
 ### 4️⃣ Run the Application
 
-#### Option A: Local Development
+#### Option A: Local Development (PC)
 ```bash
 # Terminal 1: Launch the Ingestion Backend
 cd cloud_functions
@@ -220,10 +220,32 @@ python main.py
 flutter run
 ```
 
-#### Option B: Docker Backend
+#### Option B: Android 24/7 Hosting (Termux)
+Run the backend directly on your Android phone with zero memory limits and no datacenter IP blocks:
+```bash
+# 1. Install prerequisites in Termux
+pkg update && pkg upgrade -y
+pkg install python ffmpeg nodejs-lts git clang python-cryptography -y
+
+# 2. Clone repository & install dependencies
+git clone https://github.com/JoyalJose54/Spotify_clone.git
+cd Spotify_clone/cloud_functions
+pip install -r requirements.txt --break-system-packages
+
+# 3. Setup credentials
+cp .env.example .env
+# Fill in your Cloudinary keys & database/firebase-key.json
+
+# 4. Prevent Android from sleeping and run backend
+termux-wake-lock
+python main.py
+```
+*Your Flutter app connects automatically via `http://127.0.0.1:8080` (or your phone's local Wi-Fi IP).*
+
+#### Option C: Docker Backend
 ```bash
 docker build -t spotify-backend .
-docker run -p 7860:7860 --env-file cloud_functions/.env spotify-backend
+docker run -p 8080:8080 --env-file cloud_functions/.env spotify-backend
 ```
 
 ---
