@@ -514,7 +514,7 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
     """
     out_tpl = os.path.join(output_dir, "%(id)s.%(ext)s")
     base_ydl = {
-        "format": "m4a/bestaudio/best",
+        "format": "140/251/ba/b/18/best",
         "outtmpl": out_tpl,
         "quiet": True,
         "no_warnings": True,
@@ -527,21 +527,28 @@ def _download_via_youtube(yt_url: str, output_dir: str) -> tuple[str | None, int
         "http_chunk_size": 1024 * 1024,
     }
 
-    strategies = []
+    strategies = [
+        ("VisionOS Client (PO-Token & SABR Immune)", {
+            **base_ydl,
+            "extractor_args": {"youtube": {"player_client": ["visionos", "android_vr"]}},
+        }),
+        ("Android Client (Format 18 Fallback)", {
+            **base_ydl,
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        }),
+        ("iOS Client Fallback", {
+            **base_ydl,
+            "extractor_args": {"youtube": {"player_client": ["ios", "tv_embedded"]}},
+        }),
+    ]
+
     cookie_file = _get_cookie_file_path()
     if cookie_file:
-        strat_auth = _get_ydl_opts(base_ydl.copy())
+        strat_auth = _get_ydl_opts({
+            **base_ydl,
+            "cookiefile": cookie_file,
+        })
         strategies.append(("Authenticated Cookie Mode (EJS)", strat_auth))
-
-    strategies.append(("Android Client (SABR-Bypass)", {
-        **base_ydl,
-        "extractor_args": {"youtube": {"player_client": ["android"]}}
-    }))
-
-    strategies.append(("iOS / TV Fallback", {
-        **base_ydl,
-        "extractor_args": {"youtube": {"player_client": ["ios", "tv_embedded"]}}
-    }))
 
     class CapturedLogger:
         def __init__(self):
@@ -875,8 +882,8 @@ def preview():
 
     log.info("Generating preview URL for video_id: %s", video_id)
     ydl_opts = {
-        "format": "m4a/bestaudio/best",
-        "extractor_args": {"youtube": {"player_client": ["android", "ios"]}},
+        "format": "140/251/ba/b/18/best",
+        "extractor_args": {"youtube": {"player_client": ["visionos", "android", "ios"]}},
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
