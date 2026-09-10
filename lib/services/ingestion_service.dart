@@ -9,7 +9,7 @@ import 'firebase_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 //  Backend base URL – Termux / Local service (or custom override)
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'http://127.0.0.1:8080');
+const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'https://removal-magnolia-overhand.ngrok-free.dev');
 
 class IngestionResult {
   final bool   success;
@@ -112,11 +112,17 @@ class IngestionService {
     await prefs.setString('backend_url', clean);
   }
 
+  static Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+    'User-Agent': 'SpotifyClone/1.0',
+  };
+
   static Future<bool> isBackendOnline() async {
     try {
       final base = await _getBase();
       final resp = await http
-          .get(Uri.parse('$base/ping'))
+          .get(Uri.parse('$base/ping'), headers: _headers)
           .timeout(const Duration(seconds: 25));
       return resp.statusCode == 200;
     } catch (_) {
@@ -150,7 +156,7 @@ class IngestionService {
       final resp = await http
           .post(
             Uri.parse('$base/ingest'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: jsonEncode(body),
           )
           .timeout(const Duration(minutes: 5));
@@ -224,7 +230,7 @@ class IngestionService {
     try {
       final base = await _getBase();
       final resp = await http
-          .get(Uri.parse('$base/preview?video_id=$videoId'))
+          .get(Uri.parse('$base/preview?video_id=$videoId'), headers: _headers)
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {
         final url = (jsonDecode(resp.body) as Map)['url'] as String?;
@@ -241,7 +247,7 @@ class IngestionService {
     try {
       final base = await _getBase();
       final resp = await http
-          .get(Uri.parse('$base/search?q=${Uri.encodeComponent(query)}'))
+          .get(Uri.parse('$base/search?q=${Uri.encodeComponent(query)}'), headers: _headers)
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -259,7 +265,7 @@ class IngestionService {
       final resp = await http
           .post(
             Uri.parse('$base/delete'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _headers,
             body: jsonEncode({'track_id': trackId}),
           )
           .timeout(const Duration(seconds: 30));
