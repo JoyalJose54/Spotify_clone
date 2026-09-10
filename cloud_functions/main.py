@@ -60,10 +60,13 @@ log = logging.getLogger("youtube_backend")
 app = Flask(__name__)
 
 # Firebase Admin
-_cred_path = os.environ.get(
-    "FIREBASE_CREDENTIALS_JSON",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../database/firebase-key.json")
-)
+_raw_cred = os.environ.get("FIREBASE_CREDENTIALS_JSON", "../database/firebase-key.json")
+if not _raw_cred.strip().startswith("{") and not os.path.isabs(_raw_cred):
+    p1 = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), _raw_cred))
+    p2 = os.path.normpath(os.path.join(os.getcwd(), _raw_cred))
+    _cred_path = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else _raw_cred)
+else:
+    _cred_path = _raw_cred
 db = None
 try:
     if not firebase_admin._apps:

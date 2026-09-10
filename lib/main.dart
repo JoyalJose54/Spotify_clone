@@ -18,8 +18,8 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (!kIsWeb) {
-    // Establish the system audio notification bridge
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    // Establish the system audio notification bridge (Android & iOS only)
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.yourdomain.spotify_clone.channel.audio',
       androidNotificationChannelName: 'Spotify Playback',
@@ -30,16 +30,16 @@ Future<void> main() async {
   }
 
   // 1. Firebase first — other plugins may depend on it
-  if (kIsWeb) {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: String.fromEnvironment('FIREBASE_API_KEY', defaultValue: "YOUR_FIREBASE_WEB_API_KEY"),
-        appId: String.fromEnvironment('FIREBASE_APP_ID', defaultValue: "YOUR_FIREBASE_WEB_APP_ID"),
-        messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID', defaultValue: "YOUR_MESSAGING_SENDER_ID"),
-        projectId: String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: "YOUR_FIREBASE_PROJECT_ID"),
-        storageBucket: String.fromEnvironment('FIREBASE_STORAGE_BUCKET', defaultValue: "YOUR_STORAGE_BUCKET"),
-      ),
-    );
+  const desktopFirebaseOptions = FirebaseOptions(
+    apiKey: "AIzaSyDmLc3mtdMRKpb5V6KvBMLqE2yGZEyHPm4",
+    appId: "1:159958033090:web:spotify-clone-desktop",
+    messagingSenderId: "159958033090",
+    projectId: "myspotifyclone-5000e",
+    storageBucket: "myspotifyclone-5000e.firebasestorage.app",
+  );
+
+  if (kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await Firebase.initializeApp(options: desktopFirebaseOptions);
   } else {
     await Firebase.initializeApp();
   }
