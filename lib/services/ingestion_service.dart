@@ -93,11 +93,6 @@ class IngestionService {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('backend_url')?.trim();
     if (saved != null && saved.isNotEmpty) {
-      // Auto-migrate old onrender.com URLs if previously saved
-      if (saved.contains('onrender.com')) {
-        await prefs.setString('backend_url', _kBackendBase);
-        return _kBackendBase;
-      }
       return saved.endsWith('/') ? saved.substring(0, saved.length - 1) : saved;
     }
     return _kBackendBase;
@@ -108,6 +103,9 @@ class IngestionService {
   static Future<void> updateBackendUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     var clean = url.trim();
+    if (clean.isNotEmpty && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = 'https://$clean';
+    }
     while (clean.endsWith('/')) {
       clean = clean.substring(0, clean.length - 1);
     }

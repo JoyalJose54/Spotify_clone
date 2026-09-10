@@ -94,7 +94,7 @@ class _IngestionPageState extends State<IngestionPage>
               style: SpotifyFonts.regular(color: Colors.white, fontSize: 14),
               cursorColor: SpotifyColors.green,
               decoration: InputDecoration(
-                hintText: 'http://127.0.0.1:8080 (Termux / Local)',
+                hintText: 'https://your-app.onrender.com',
                 hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 13),
                 labelText: 'Backend Server URL',
                 labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 12),
@@ -117,7 +117,7 @@ class _IngestionPageState extends State<IngestionPage>
               ctrl.text = 'http://127.0.0.1:8080';
             },
             child: Text(
-              'Use Termux (Local)',
+              'Use Local/Termux',
               style: SpotifyFonts.regular(color: SpotifyColors.green, fontWeight: FontWeight.bold),
             ),
           ),
@@ -141,9 +141,12 @@ class _IngestionPageState extends State<IngestionPage>
                 await IngestionService.updateBackendUrl(newUrl);
                 if (mounted) {
                   SpotifyToast.show(context, 'Backend URL updated!', icon: Icons.save);
+                  setState(() {
+                    _isBackendOnline = null;
+                  });
                 }
                 nav.pop();
-                _checkBackendStatus();
+                await _checkBackendStatus();
               }
             },
             child: Text(
