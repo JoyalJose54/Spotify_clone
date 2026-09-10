@@ -417,16 +417,64 @@ class PositionData {
 class AuthProvider extends ChangeNotifier {
   bool   _isLoggedIn = false;
   String _userName   = '';
+  String _kickMessage = '';
 
   bool   get isLoggedIn => _isLoggedIn;
   String get userName   => _userName;
+  String get kickMessage => _kickMessage;
 
-  AuthProvider() { _loadUser(); }
+  AuthProvider() {
+    _loadUser();
+  }
+
+  void clearKickMessage() {
+    _kickMessage = '';
+  }
 
   Future<void> _loadUser() async {
     final prefs = await SharedPreferences.getInstance();
-    _isLoggedIn = prefs.getBool('is_registered') ?? false;
+    final registered = prefs.getBool('is_registered') ?? false;
     _userName   = prefs.getString('user_name') ?? '';
+
+    // Validate that Firebase Auth actually has an active user
+    final firebaseUser = FirebaseService.currentUser;
+    if (registered && firebaseUser == null) {
+      debugPrint('[Auth] SharedPreferences has is_registered=true, but Firebase currentUser is null. Resetting session.');
+      _isLoggedIn = false;
+      _userName = '';
+      _kickMessage = 'Your account was deleted or disabled. Please log in again.';
+      await prefs.setBool('is_registered', false);
+      await prefs.remove('user_name');
+      notifyListeners();
+      return;
+    }
+
+    _isLoggedIn = registered && firebaseUser != null;
+    if (_isLoggedIn) {
+      _startMonitoring();
+    }
+    notifyListeners();
+  }
+
+  void _startMonitoring() {
+    FirebaseService.startUserSessionMonitoring(
+      onKicked: () {
+        handleKickedUser();
+      },
+    );
+  }
+
+  Future<void> handleKickedUser([String? message]) async {
+    _kickMessage = message ?? 'Your account was deleted or disabled by the administrator. Please log in again.';
+    _isLoggedIn = false;
+    _userName   = '';
+    FirebaseService.stopUserSessionMonitoring();
+    try {
+      await FirebaseService.signOut();
+    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_registered', false);
+    await prefs.remove('user_name');
     notifyListeners();
   }
 
@@ -442,6 +490,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> login(String email, String name) async {
     _isLoggedIn = true;
     _userName   = name;
+    _kickMessage = '';
     try {
       await FirebaseService.loginWithEmail(email: email, password: 'password123');
     } catch (e) {
@@ -450,11 +499,13 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_registered', true);
     await prefs.setString('user_name', name);
+    _startMonitoring();
     notifyListeners();
   }
 
   Future<void> loginAsGuest() async {
     _isLoggedIn = true;
+    _kickMessage = '';
     try {
       await FirebaseService.signInAnonymously();
     } catch (e) {
@@ -462,12 +513,18 @@ class AuthProvider extends ChangeNotifier {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_registered', true);
+    _startMonitoring();
     notifyListeners();
   }
 
   Future<void> logout() async {
     _isLoggedIn = false;
     _userName   = '';
+    _kickMessage = '';
+    FirebaseService.stopUserSessionMonitoring();
+    try {
+      await FirebaseService.signOut();
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_registered', false);
     await prefs.remove('user_name');

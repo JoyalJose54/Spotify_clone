@@ -184,7 +184,7 @@ class Playlist {
     required this.name,
     this.description    = '',
     this.imageUrl       = '',
-    this.owner          = 'You',
+    this.owner          = '',
     this.likes          = 0,
     this.trackIds       = const [],
     this.tracks         = const [],
@@ -208,12 +208,18 @@ class Playlist {
       rawIds = List<String>.from(d['songIds']);
     }
 
+    String rawOwner = d['owner'] as String? ?? '';
+    // Strip raw Firebase UIDs (alphanumeric string with 20+ chars and no spaces) or local_user
+    if ((rawOwner.length >= 20 && !rawOwner.contains(' ')) || rawOwner == 'local_user') {
+      rawOwner = '';
+    }
+
     return Playlist(
       id          : doc.id,
       name        : d['name']        as String? ?? 'Untitled Playlist',
       description : d['description'] as String? ?? '',
       imageUrl    : d['imageUrl']    as String? ?? '',
-      owner       : d['owner']       as String? ?? 'You',
+      owner       : rawOwner,
       likes       : (d['likes'] as num?)?.toInt() ?? 0,
       trackIds    : rawIds,
       tracks      : resolvedTracks,

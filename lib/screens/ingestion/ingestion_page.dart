@@ -553,7 +553,10 @@ class _CsvTab extends StatefulWidget {
   State<_CsvTab> createState() => _CsvTabState();
 }
 
-class _CsvTabState extends State<_CsvTab> {
+class _CsvTabState extends State<_CsvTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   Future<void> _pickCsv() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -735,6 +738,7 @@ class _CsvTabState extends State<_CsvTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final provider = context.watch<IngestionProvider>();
 
     // Safely trigger duplicate dialog — guarded, never stacks callbacks.
@@ -1227,7 +1231,10 @@ class _SearchTab extends StatefulWidget {
   State<_SearchTab> createState() => _SearchTabState();
 }
 
-class _SearchTabState extends State<_SearchTab> {
+class _SearchTabState extends State<_SearchTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _ctrl = TextEditingController();
 
   // 15-second Audio Preview state
@@ -1416,6 +1423,7 @@ class _SearchTabState extends State<_SearchTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final provider = context.watch<IngestionProvider>();
     final results = provider.searchResults;
     final searching = provider.isSearching;
@@ -1577,7 +1585,7 @@ class _SearchTabState extends State<_SearchTab> {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      'SpotiFLAC Studio Lossless active • Auto YouTube fallback for regional & Malayalam tracks',
+                      'High-Speed YouTube Ingestion Engine active • 256k AAC HQ Audio',
                       style: SpotifyFonts.regular(
                         color: SpotifyColors.lightGrey,
                         fontSize: 10.5,
@@ -1659,7 +1667,9 @@ class _SearchTabState extends State<_SearchTab> {
                           final isPlayingPreview = _previewVideoId == r.videoId;
 
                           return _YoutubeResultTile(
+                            key: ValueKey(r.videoId),
                             result: r,
+                            isFallback: provider.fallbackVideoIds.contains(r.videoId),
                             isLoading: isIngesting ||
                                 (!exactLocalMatch &&
                                     !preChecked &&
@@ -1671,10 +1681,7 @@ class _SearchTabState extends State<_SearchTab> {
                             isPreviewLoading: isPlayingPreview && _previewLoading,
                             onPlayPreview: () => _togglePreview(r),
                             onAdd: isDone || isIngesting ? null : () => _ingest(r),
-                          )
-                              .animate()
-                              .fadeIn(duration: (200 + (i * 35).clamp(0, 300)).ms)
-                              .slideY(begin: 0.08, end: 0);
+                          );
                         },
                       ),
       ),
@@ -1764,6 +1771,7 @@ class _EqualizerBarsState extends State<_EqualizerBars>
 // ─────────────────────────────────────────────────────────────────────────────
 class _YoutubeResultTile extends StatelessWidget {
   final YouTubeSearchResult result;
+  final bool isFallback;
   final bool isLoading;
   final double progress;
   final bool isDone;
@@ -1774,7 +1782,9 @@ class _YoutubeResultTile extends StatelessWidget {
   final VoidCallback? onAdd;
 
   const _YoutubeResultTile({
+    super.key,
     required this.result,
+    required this.isFallback,
     required this.isLoading,
     required this.progress,
     required this.isDone,
@@ -1786,24 +1796,20 @@ class _YoutubeResultTile extends StatelessWidget {
   });
 
   String _getStageTitle(double p) {
-    if (p < 0.25) return 'Checking SpotiFLAC Catalog…';
-    if (p < 0.55) return 'Lossless not found — Falling back to YouTube…';
-    if (p < 0.85) return 'Downloading Audio & Transcoding (256k AAC)…';
-    return 'Uploading Artwork & Cloud CDN…';
+    if (p < 0.30) return 'Resolving YouTube stream & metadata…';
+    if (p < 0.70) return 'Downloading audio & transcoding (256k AAC)…';
+    return 'Uploading artwork & Cloud CDN…';
   }
 
   IconData _getStageIcon(double p) {
-    if (p < 0.25) return Icons.search_rounded;
-    if (p < 0.55) return Icons.swap_horiz_rounded;
-    if (p < 0.85) return Icons.album_rounded;
+    if (p < 0.30) return Icons.search_rounded;
+    if (p < 0.70) return Icons.album_rounded;
     return Icons.cloud_upload_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
     final activeIngest = isLoading && progress > 0.0;
-    final provider = context.watch<IngestionProvider>();
-    final isFallback = provider.fallbackVideoIds.contains(result.videoId);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
@@ -2030,9 +2036,7 @@ class _YoutubeResultTile extends StatelessWidget {
                             _getStageIcon(progress),
                             size: 13,
                             color: const Color(0xFF00E5FF),
-                          )
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.2, 1.2)),
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             _getStageTitle(progress),
@@ -2137,14 +2141,7 @@ class _TrailingButton extends StatelessWidget {
             ),
           ],
         ),
-      )
-          .animate()
-          .scale(
-            begin: const Offset(0.7, 0.7),
-            end: const Offset(1.0, 1.0),
-            curve: Curves.elasticOut,
-            duration: 450.ms,
-          );
+      );
     }
     return GestureDetector(
       onTap: onTap,

@@ -104,21 +104,53 @@ class _AppNavigatorState extends State<AppNavigator> {
     if (mounted) setState(() => _state = next);
   }
 
+  void _showKickSnackbar(String msg) {
+    if (msg.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFE22134),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // If we're in the guestSetup state but auth is already complete
-    // (e.g. the user was already registered), advance to main immediately.
-    // Using didChangeDependencies is the correct hook for reacting to
-    // Provider changes — never call setState or schedule navigation from build().
+    final auth = context.watch<AuthProvider>();
     if (_state == _AppState.guestSetup) {
-      final auth = context.read<AuthProvider>();
       if (auth.userName.isNotEmpty && auth.isLoggedIn) {
-        // Schedule after current frame to avoid setState-during-build assertions.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _go(_AppState.main);
         });
       }
+    } else if (_state == _AppState.main && !auth.isLoggedIn) {
+      // User was kicked or logged out — return immediately to Login
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          try {
+            context.read<PlayerProvider>().audioPlayer?.pause();
+          } catch (_) {}
+          _go(_AppState.login);
+          _showKickSnackbar(auth.kickMessage);
+          auth.clearKickMessage();
+        }
+      });
     }
   }
 
@@ -131,6 +163,42 @@ class _AppNavigatorState extends State<AppNavigator> {
   }
 
   Widget _buildScreen() {
+    final auth = context.watch<AuthProvider>();
+
+    // 1. Splash Screen
+    if (_state == _AppState.splash) {
+      return SplashScreen(
+        key: const ValueKey('splash'),
+        onComplete: () {
+          if (auth.isLoggedIn) {
+            _go(_AppState.main);
+          } else {
+            _go(_AppState.login);
+            _showKickSnackbar(auth.kickMessage);
+            auth.clearKickMessage();
+          }
+        },
+      );
+    }
+
+    // 2. Strict Security Guard: If not logged in, NEVER render MainScreen
+    if (!auth.isLoggedIn) {
+      if (_state == _AppState.auth) {
+        return AuthFlowScreen(
+          onAuthComplete: () => _go(_AppState.guestSetup),
+        );
+      }
+      return LoginScreen(
+        key: const ValueKey('login'),
+        onLoginComplete: () {
+          context.read<AuthProvider>().loginAsGuest();
+          _go(_AppState.guestSetup);
+        },
+        onSignUp: () => _go(_AppState.auth),
+      );
+    }
+
+    // 3. User is authenticated
     switch (_state) {
       case _AppState.auth:
         return AuthFlowScreen(
@@ -146,21 +214,14 @@ class _AppNavigatorState extends State<AppNavigator> {
           onSignUp: () => _go(_AppState.auth),
         );
       case _AppState.guestSetup:
-        // Build stays pure — the auto-advance is handled in didChangeDependencies.
         return GuestSetupScreen(
           onComplete: (name) {
             context.read<AuthProvider>().setUserName(name);
             _go(_AppState.main);
           },
         );
-      case _AppState.splash:
-        return SplashScreen(
-          key: const ValueKey('splash'),
-          onComplete: () {
-            _go(_isRegistered ? _AppState.main : _AppState.login);
-          },
-        );
       case _AppState.main:
+      default:
         return const MainScreen(key: ValueKey('main'));
     }
   }

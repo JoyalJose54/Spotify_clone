@@ -761,7 +761,7 @@ class _PlaylistCard extends StatelessWidget {
               style: SpotifyFonts.bold(
                   color: SpotifyColors.white,
                   fontSize: 13)),
-          Text(playlist.owner,
+          Text(playlist.owner.isNotEmpty ? playlist.owner : 'Playlist',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: SpotifyFonts.regular(

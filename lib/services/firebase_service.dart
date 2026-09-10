@@ -282,7 +282,7 @@ class FirebaseService {
       final doc = await _db.collection('playlists').add({
         'name'          : name,
         'description'   : description,
-        'owner'         : uid,
+        'owner'         : '',
         'creator_id'    : uid,
         'trackIds'      : trackIds,
         'track_ids'     : trackIds,
@@ -790,5 +790,137 @@ class FirebaseService {
       print('[FirebaseService] signInAnonymously error: $e');
       return null;
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  USER SESSION VALIDITY & KICK MONITORING
+  // ══════════════════════════════════════════════════════════════════════════
+
+  static StreamSubscription<DocumentSnapshot>? _userDocSub;
+  static StreamSubscription<User?>? _idTokenSub;
+  static Timer? _sessionVerifyTimer;
+  static Timer? _initialDocGraceTimer;
+  static VoidCallback? onUserKicked;
+  // Grace period: how long to wait before treating a missing Firestore
+  // user-doc as a reason to kick. Some accounts (created via Console or
+  // linked providers) may not have a /users/{uid} document at all.
+  static const Duration _docGracePeriod = Duration(seconds: 10);
+  static bool _docGraceActive = false;
+
+  /// Starts real-time monitoring of user validity.
+  /// Detects when an admin explicitly bans/kicks the user in Firestore,
+  /// or when Firebase Auth marks the account as deleted/disabled.
+  /// A missing Firestore users-doc alone does NOT trigger a kick (many
+  /// accounts created via the Console won't have one).
+  static void startUserSessionMonitoring({
+    required VoidCallback onKicked,
+  }) {
+    stopUserSessionMonitoring();
+    onUserKicked = onKicked;
+    final user = _auth.currentUser;
+
+    // If AuthProvider thinks we are logged in, but Firebase Auth currentUser is null,
+    // the account has already been deleted — kick immediately.
+    if (user == null) {
+      debugPrint('[Auth] startUserSessionMonitoring: currentUser is null! Kicking user immediately.');
+      _triggerKick();
+      return;
+    }
+
+    // 1. Real-time Firestore document listener (instant WebSocket update when banned/kicked)
+    //    Only for non-anonymous users. We ONLY kick if a ban flag is set —
+    //    a missing document is NOT a kick signal.
+    if (!user.isAnonymous) {
+      _docGraceActive = true;
+      _initialDocGraceTimer = Timer(_docGracePeriod, () {
+        _docGraceActive = false;
+      });
+
+      _userDocSub = _db.collection('users').doc(user.uid).snapshots().listen(
+        (snap) {
+          if (!snap.exists) {
+            // Document doesn't exist — could be a Console-created account.
+            // During grace period, just wait. After grace period still missing,
+            // do NOT kick — it just means they have no profile doc.
+            debugPrint('[Auth] User document missing in Firestore (users/${user.uid}). Grace active: $_docGraceActive');
+            return; // Never kick solely because doc doesn't exist
+          }
+          final data = snap.data();
+          if (data != null &&
+              (data['isBanned'] == true ||
+               data['status'] == 'banned' ||
+               data['kicked'] == true)) {
+            debugPrint('[Auth] User flagged as banned/kicked in Firestore. Kicking user.');
+            _triggerKick();
+          }
+        },
+        onError: (err) {
+          debugPrint('[Auth] User doc snapshot error: $err');
+          // Only kick on permission-denied if we know it's not a transient error
+          if (err.toString().contains('permission-denied')) {
+            debugPrint('[Auth] Permission denied on user doc — not kicking (may be Firestore rules issue).');
+          }
+        },
+      );
+    }
+
+    // 2. Auth token change listener
+    //    Only kick if null AND we are not in an ongoing token refresh.
+    //    The App Check warning can sometimes cause a brief null emission.
+    bool _idTokenInitialFired = false;
+    _idTokenSub = _auth.idTokenChanges().listen((currentUser) {
+      if (!_idTokenInitialFired) {
+        _idTokenInitialFired = true;
+        return; // Skip first emission (always fires on subscribe)
+      }
+      if (currentUser == null) {
+        debugPrint('[Auth] idTokenChanges emitted null after initial. Kicking user.');
+        _triggerKick();
+      }
+    });
+
+    // 3. Periodic verification (every 15 seconds)
+    //    Uses currentUser.reload() to detect Auth-level deletion/disable.
+    _sessionVerifyTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        debugPrint('[Auth] Periodic check: currentUser is null. Kicking.');
+        _triggerKick();
+        return;
+      }
+      try {
+        await currentUser.reload();
+      } catch (e) {
+        final errStr = e.toString().toLowerCase();
+        debugPrint('[Auth] Periodic reload error: $errStr');
+        if (errStr.contains('user-not-found') ||
+            errStr.contains('user_not_found') ||
+            errStr.contains('user-disabled') ||
+            errStr.contains('user_disabled') ||
+            errStr.contains('no user record') ||
+            errStr.contains('user has been deleted')) {
+          _triggerKick();
+        }
+        // Ignore token/network errors — they are transient
+      }
+    });
+  }
+
+  static void _triggerKick() {
+    stopUserSessionMonitoring();
+    onUserKicked?.call();
+  }
+
+  static void stopUserSessionMonitoring() {
+    _userDocSub?.cancel();
+    _userDocSub = null;
+    _idTokenSub?.cancel();
+    _idTokenSub = null;
+    _sessionVerifyTimer?.cancel();
+    _sessionVerifyTimer = null;
+    _initialDocGraceTimer?.cancel();
+    _initialDocGraceTimer = null;
+    _docGraceActive = false;
+    onUserKicked = null;
   }
 }

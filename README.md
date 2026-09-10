@@ -70,10 +70,10 @@
 </td>
 <td width="50%" valign="top">
 
-### ⚡ Dual-Engine Ingestion Backend
-- **Tier-1 SpotiFLAC Engine**: Direct high-quality lossless track retrieval with automatic fallback to YouTube via `yt-dlp`.
-- **Shazam Audio Fingerprinting**: Automated track recognition, artist normalization, and official album art tagging.
-- **Memory-Safe Architecture**: Bound <150MB footprint with single-thread `ffmpeg`, garbage collector cycles, and Gunicorn request recycling.
+### ⚡ High-Speed YouTube Ingestion Backend
+- **High-Speed YouTube Engine**: Direct track retrieval via `yt-dlp` with anti-blocking client emulation (~10-15s ingestion).
+- **Fast Audio Transcoder**: High-performance FFmpeg AAC 256kbps audio transcoding with `-faststart` streaming optimization.
+- **Memory-Safe Architecture**: Bound <150MB footprint with garbage collector cycles and Gunicorn request recycling.
 - **Flexible Deployment**: Ready for deployment on Termux (Android), Docker, or local background service.
 
 </td>
@@ -108,14 +108,10 @@ graph TD
 
     subgraph IngestionEngine["⚙️ Python Ingestion Backend"]
         API["Flask / Gunicorn API"]
-        SpotiFLAC["Tier-1 SpotiFLAC Engine"]
         YTDLP["yt-dlp Engine + QuickJS Solver"]
-        Shazam["Shazam Recognition (RapidAPI)"]
         FFmpeg["ffmpeg Audio Transcoder"]
         
-        API --> SpotiFLAC
         API --> YTDLP
-        API --> Shazam
         YTDLP --> FFmpeg
     end
 

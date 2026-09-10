@@ -2,9 +2,9 @@
 
 Running this Python backend locally or on Android (Termux) gives you **100% unlimited RAM, zero cold starts, and zero risk of YouTube bot blocking** (because it runs directly from your residential IP rather than a datacenter IP).
 
-The backend features a **hybrid pipeline**:
-1. **Tier 1 (SpotiFLAC)**: Downloads studio-master lossless FLAC via Tidal/Qobuz with official Spotify metadata.
-2. **Tier 2 (YouTube Fallback)**: If a track is **Malayalam, Tamil, regional, or unstreamed**, SpotiFLAC will seamlessly fall back to YouTube (`yt-dlp`) with anti-blocking Android client emulation.
+The backend features a **high-speed ingestion pipeline**:
+1. **Direct YouTube / YT Music Retrieval**: Downloads high-fidelity audio via `yt-dlp` using anti-blocking Android client emulation in ~3–5 seconds.
+2. **Parallel Processing**: FFmpeg transcodes audio to 256k AAC M4A while album artwork and audio upload concurrently to Cloudinary.
 
 ---
 
@@ -39,7 +39,6 @@ CLOUDINARY_CLOUD_NAME=your_name
 CLOUDINARY_API_KEY=your_key
 CLOUDINARY_API_SECRET=your_secret
 FIREBASE_CREDENTIALS_JSON=../database/firebase-key.json
-SPOTIFLAC_REGISTRIES=https://raw.githubusercontent.com/zarzet/SpotiFLAC-Extension/main/registry.json
 ```
 *(Press `Ctrl + O` and `Enter` to save, `Ctrl + X` to exit).*
 
@@ -80,6 +79,38 @@ If you want a public HTTPS URL so your Flutter app can connect from anywhere (ev
 
 ---
 
+## ☁️ Option C: Deploy on Render (Free Tier - 512MB RAM)
+
+With SpotiFLAC removed, the backend runs comfortably within **150MB–220MB RAM**, easily fitting inside Render's **512MB Free Tier limit**.
+
+### 1. Create a New Web Service on Render
+1. Go to [dashboard.render.com](https://dashboard.render.com) and click **New + > Web Service**.
+2. Connect your GitHub repository (`Spotify_clone`).
+3. Select **Docker** as the Runtime (it will use the project's `Dockerfile` to install ffmpeg and Node.js automatically).
+4. Instance Type: Select **Free (512 MB RAM, 0.1 CPU)**.
+
+### 2. Configure Environment Variables on Render
+Under **Environment Variables**, add:
+| Key | Value | Notes |
+| :--- | :--- | :--- |
+| `CLOUDINARY_CLOUD_NAME` | *your-cloud-name* | Required for media storage |
+| `CLOUDINARY_API_KEY` | *your-api-key* | Required |
+| `CLOUDINARY_API_SECRET` | *your-api-secret* | Required |
+| `FIREBASE_CREDENTIALS_JSON` | *paste contents of firebase-key.json* | Direct JSON string of service account key |
+| `YOUTUBE_COOKIES_BASE64` | *base64 encoded cookies.txt* | Optional but recommended for datacenter reliability |
+
+### 3. Preventing the 15-Minute "Cooloff / Inactivity Sleep"
+Render puts Free services to sleep after 15 minutes of inactivity. We provide two solutions:
+- **Built-in Auto Keep-Alive**: The backend automatically detects Render's `RENDER_EXTERNAL_URL` and starts a background heartbeat thread that pings `/ping` every 10 minutes.
+- **External Cron Ping (Recommended 100% Guarantee)**:
+  1. Go to [cron-job.org](https://cron-job.org) or [uptimerobot.com](https://uptimerobot.com) (both 100% free).
+  2. Create a new monitor to send an HTTP GET request to:
+     `https://your-service-name.onrender.com/ping`
+  3. Set the schedule to every **10 or 12 minutes**.
+  4. Render will stay awake 24/7 with zero cold starts! (Render gives 750 free hours/month, and a full 31-day month is only 744 hours, so 1 service stays within the free allowance).
+
+---
+
 ## 📱 Connecting Your Flutter App to the Backend
 
 1. Launch your Flutter app.
@@ -87,4 +118,4 @@ If you want a public HTTPS URL so your Flutter app can connect from anywhere (ev
    ```dart
    const String _kBackendBase = String.fromEnvironment('BACKEND_BASE_URL', defaultValue: 'http://127.0.0.1:8080');
    ```
-3. You can also change the URL anytime inside the app by going to the Ingestion screen and updating the **Backend Server URL**.
+3. You can also change the URL anytime inside the app by going to the Ingestion screen and updating the **Backend Server URL** with your Render URL: `https://your-service-name.onrender.com`.

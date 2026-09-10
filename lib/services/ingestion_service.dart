@@ -157,25 +157,35 @@ class IngestionService {
           )
           .timeout(const Duration(minutes: 5));
 
+      if (resp.statusCode != 200) {
+        if (resp.statusCode == 524) {
+          return IngestionResult.error(
+            'Cloudflare 100s timeout (Error 524). Song is still processing on PC in background.',
+          );
+        }
+        try {
+          final errData = jsonDecode(resp.body) as Map<String, dynamic>;
+          return IngestionResult.error(errData['error'] as String? ?? 'Backend error ${resp.statusCode}');
+        } catch (_) {
+          return IngestionResult.error('Backend error (HTTP ${resp.statusCode})');
+        }
+      }
+
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
 
-      if (resp.statusCode == 200) {
-        final isDup = data['duplicate'] == true || data['status'] == 'duplicate';
-        final engine = data['engine'] as String? ?? (data['source'] as String? ?? '');
-        final fallbackUsed = data['fallback_used'] == true || engine == 'youtube_fallback';
-        return IngestionResult(
-          success:      true,
-          isDuplicate:  isDup,
-          fallbackUsed: fallbackUsed,
-          engine:       engine,
-          trackId:      data['track_id']   as String? ?? '',
-          secureUrl:    data['secure_url'] as String? ?? '',
-          coverUrl:     data['cover_url']  as String? ?? '',
-          message:      data['message']    as String? ?? (isDup ? 'Already in library' : 'Added successfully!'),
-        );
-      } else {
-        return IngestionResult.error(data['error'] as String? ?? 'Backend error ${resp.statusCode}');
-      }
+      final isDup = data['duplicate'] == true || data['status'] == 'duplicate';
+      final engine = data['engine'] as String? ?? (data['source'] as String? ?? '');
+      final fallbackUsed = data['fallback_used'] == true || engine == 'youtube_fallback';
+      return IngestionResult(
+        success:      true,
+        isDuplicate:  isDup,
+        fallbackUsed: fallbackUsed,
+        engine:       engine,
+        trackId:      data['track_id']   as String? ?? '',
+        secureUrl:    data['secure_url'] as String? ?? '',
+        coverUrl:     data['cover_url']  as String? ?? '',
+        message:      data['message']    as String? ?? (isDup ? 'Already in library' : 'Added successfully!'),
+      );
     } on SocketException {
       return IngestionResult.error(
         'Cannot reach backend.\n\nMake sure the Python backend is running:\n  cd cloud_functions\n  python main.py',

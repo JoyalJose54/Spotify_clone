@@ -881,38 +881,40 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                           ),
                           const SizedBox(height: 10),
 
-                          // + Avatar Name
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.add, color: Colors.white, size: 18),
-                                const SizedBox(width: 8),
-                                Container(
-                                  width: 24, height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: SpotifyColors.green, shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      (widget.playlist.owner.isEmpty ? 'Y' : widget.playlist.owner[0]).toUpperCase(),
-                                      style: SpotifyFonts.regular( 
-                                        color: Colors.black, fontSize: 13, fontWeight: FontWeight.w800,
+                          // Avatar Name (only shown if playlist has a real curator/owner name like Spotify, never raw UIDs)
+                          if (widget.playlist.owner.trim().isNotEmpty &&
+                              !widget.playlist.owner.contains('local_user') &&
+                              !(widget.playlist.owner.length >= 20 && !widget.playlist.owner.contains(' '))) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 24, height: 24,
+                                    decoration: const BoxDecoration(
+                                      color: SpotifyColors.green, shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        widget.playlist.owner[0].toUpperCase(),
+                                        style: SpotifyFonts.regular( 
+                                          color: Colors.black, fontSize: 13, fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  widget.playlist.owner.isEmpty ? 'You' : widget.playlist.owner,
-                                  style: SpotifyFonts.regular( 
-                                    color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700,
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    widget.playlist.owner,
+                                    style: SpotifyFonts.regular( 
+                                      color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
+                            const SizedBox(height: 6),
+                          ],
 
                           // Lock + duration
                           Padding(

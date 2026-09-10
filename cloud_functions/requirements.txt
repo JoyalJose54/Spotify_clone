@@ -6,7 +6,5 @@ firebase-admin>=6.4.0
 pydub>=0.25.1
 mutagen>=1.47.0
 python-dotenv>=1.0.0
-SpotiFLAC>=0.1.0
 yt-dlp>=2025.1.1
-uvicorn>=0.28.0
 audioop-lts; python_version >= "3.13"
