@@ -61,101 +61,277 @@ class _IngestionPageState extends State<IngestionPage>
 
     if (!mounted) return;
 
+    Future<void> applyUrl(BuildContext dCtx, String url, String label) async {
+      final nav = Navigator.of(dCtx);
+      await IngestionService.updateBackendUrl(url);
+      if (mounted) {
+        SpotifyToast.show(context, 'Connecting to $label...', icon: Icons.sync);
+        setState(() {
+          _isBackendOnline = null;
+        });
+      }
+      nav.pop();
+      await _checkBackendStatus();
+    }
+
     await showDialog<void>(
       context: context,
-      builder: (dCtx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          children: [
-            const Icon(Icons.settings, color: Colors.white),
-            const SizedBox(width: 10),
-            Text(
-              'Backend Settings',
-              style: SpotifyFonts.regular(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Configure the URL for your Python ingestion backend (e.g. PC Local IP or cloud URL).',
-              style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              style: SpotifyFonts.regular(color: Colors.white, fontSize: 14),
-              cursorColor: SpotifyColors.green,
-              decoration: InputDecoration(
-                hintText: 'https://your-app.onrender.com',
-                hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 13),
-                labelText: 'Backend Server URL',
-                labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 12),
-                border: const OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFF3E3E3E)),
-                ),
-                focusedBorder: const OutlineInputBorder(
-                  borderSide: BorderSide(color: SpotifyColors.green, width: 1.5),
-                ),
-                enabledBorder: const OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFF3E3E3E)),
+      builder: (dCtx) {
+        final isCloud = currentUrl == IngestionService.cloudflareUrl;
+        final isLocal = currentUrl == IngestionService.localWifiUrl;
+
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.settings, color: Colors.white, size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Backend Connection',
+                style: SpotifyFonts.regular(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
                 ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              ctrl.text = 'http://127.0.0.1:8080';
-            },
-            child: Text(
-              'Use Local/Termux',
-              style: SpotifyFonts.regular(color: SpotifyColors.green, fontWeight: FontWeight.bold),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Select how your app connects to the ingestion backend on your PC:',
+                  style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 13),
+                ),
+                const SizedBox(height: 14),
+
+                // Option 1: Cloudflare / Tunnel (Default)
+                InkWell(
+                  onTap: () => applyUrl(dCtx, IngestionService.cloudflareUrl, 'Cloudflare Tunnel'),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isCloud ? SpotifyColors.green.withValues(alpha: 0.12) : const Color(0xFF282828),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isCloud ? SpotifyColors.green : const Color(0xFF3E3E3E),
+                        width: isCloud ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isCloud ? SpotifyColors.green : Colors.white12,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.cloud_done_rounded,
+                            color: isCloud ? Colors.black : Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Use Cloudflare',
+                                    style: SpotifyFonts.regular(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: SpotifyColors.green.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      'Default',
+                                      style: SpotifyFonts.regular(
+                                        color: SpotifyColors.green,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                IngestionService.cloudflareUrl,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isCloud)
+                          const Icon(Icons.check_circle, color: SpotifyColors.green, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Option 2: Local Wi-Fi
+                InkWell(
+                  onTap: () => applyUrl(dCtx, IngestionService.localWifiUrl, 'Local Wi-Fi'),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isLocal ? SpotifyColors.green.withValues(alpha: 0.12) : const Color(0xFF282828),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isLocal ? SpotifyColors.green : const Color(0xFF3E3E3E),
+                        width: isLocal ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isLocal ? SpotifyColors.green : Colors.white12,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.wifi_rounded,
+                            color: isLocal ? Colors.black : Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Local Wi-Fi',
+                                    style: SpotifyFonts.regular(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white12,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      'Direct PC',
+                                      style: SpotifyFonts.regular(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                IngestionService.localWifiUrl,
+                                style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isLocal)
+                          const Icon(Icons.check_circle, color: SpotifyColors.green, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Custom URL input
+                Row(
+                  children: [
+                    const Expanded(child: Divider(color: Color(0xFF3E3E3E))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        'OR CUSTOM URL',
+                        style: SpotifyFonts.regular(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const Expanded(child: Divider(color: Color(0xFF3E3E3E))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  style: SpotifyFonts.regular(color: Colors.white, fontSize: 13),
+                  cursorColor: SpotifyColors.green,
+                  decoration: InputDecoration(
+                    hintText: 'http://10.0.9.179:8080',
+                    hintStyle: SpotifyFonts.regular(color: Colors.grey, fontSize: 12),
+                    labelText: 'Custom Server URL',
+                    labelStyle: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontSize: 11),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF3E3E3E)),
+                    ),
+                    focusedBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: SpotifyColors.green, width: 1.5),
+                    ),
+                    enabledBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF3E3E3E)),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx),
-            child: Text(
-              'Cancel',
-              style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontWeight: FontWeight.bold),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dCtx),
+              child: Text(
+                'Close',
+                style: SpotifyFonts.regular(color: SpotifyColors.lightGrey, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SpotifyColors.green,
-              foregroundColor: Colors.black,
-              shape: const StadiumBorder(),
-            ),
-            onPressed: () async {
-              final newUrl = ctrl.text.trim();
-              if (newUrl.isNotEmpty) {
-                final nav = Navigator.of(dCtx);
-                await IngestionService.updateBackendUrl(newUrl);
-                if (mounted) {
-                  SpotifyToast.show(context, 'Backend URL updated!', icon: Icons.save);
-                  setState(() {
-                    _isBackendOnline = null;
-                  });
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: SpotifyColors.green,
+                foregroundColor: Colors.black,
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              ),
+              onPressed: () async {
+                final newUrl = ctrl.text.trim();
+                if (newUrl.isNotEmpty) {
+                  await applyUrl(dCtx, newUrl, 'Custom URL');
                 }
-                nav.pop();
-                await _checkBackendStatus();
-              }
-            },
-            child: Text(
-              'Save',
-              style: SpotifyFonts.regular(fontWeight: FontWeight.bold),
+              },
+              child: Text(
+                'Save Custom',
+                style: SpotifyFonts.regular(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 

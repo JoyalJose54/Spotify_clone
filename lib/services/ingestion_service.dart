@@ -87,6 +87,9 @@ class CsvEntryState {
 class IngestionService {
   static final _db = FirebaseFirestore.instance;
 
+  static const String cloudflareUrl = 'https://removal-magnolia-overhand.ngrok-free.dev';
+  static const String localWifiUrl   = 'http://10.0.9.179:8080';
+
 
   // ── Backend URL (reads from SharedPreferences so user can override) ──────
   static Future<String> _getBase() async {
