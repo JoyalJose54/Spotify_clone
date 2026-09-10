@@ -15,9 +15,9 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore%20%7C%20Auth-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
 [![Cloudinary](https://img.shields.io/badge/Cloudinary-Audio%20%26%20Art%20CDN-3448C5?style=for-the-badge&logo=cloudinary&logoColor=white)](https://cloudinary.com)
 [![Python](https://img.shields.io/badge/Python-3.11%2B%20Flask-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://flask.palletsprojects.com)
-[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
+[![Ngrok](https://img.shields.io/badge/Ngrok-Permanent%20Tunnel-1F1E24?style=for-the-badge&logo=ngrok&logoColor=white)](https://ngrok.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey?style=for-the-badge&logo=android&logoColor=white)](https://flutter.dev)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Android%20%7C%20iOS-lightgrey?style=for-the-badge&logo=windows&logoColor=white)](https://flutter.dev)
 
 <br/>
 
@@ -132,7 +132,7 @@ graph TD
 | **State Management** | **Provider** | Reactive state handling across audio, auth, and playlists |
 | **Audio Engine** | **just_audio** + **audio_session** | Low-latency audio streaming, buffering, lockscreen controls |
 | **Backend API** | **Python 3.11+ / Flask** | High-performance async ingestion microservice |
-| **Production Server** | **Gunicorn** + **Docker** | Production containerization with resource boundaries |
+| **Ingestion Tunnel** | **Ngrok / Cloudflare** | Zero-config permanent public endpoint for 24/7 mobile access |
 | **Database** | **Firebase Firestore** | Real-time reactive document store with offline caching |
 | **Authentication** | **Firebase Auth** | Secure user credentials and session management |
 | **Media CDN** | **Cloudinary** | Audio streaming distribution and CDN image optimization |
@@ -238,11 +238,16 @@ python main.py
 ```
 *Your Flutter app connects automatically via `http://127.0.0.1:8080` (or your phone's local Wi-Fi IP).*
 
-#### Option C: Docker Backend
-```bash
-docker build -t spotify-backend .
-docker run -p 8080:8080 --env-file cloud_functions/.env spotify-backend
-```
+#### Option C: Permanent Ngrok Tunnel & Windows Background Auto-Boot
+Run the backend seamlessly on your PC and access it anywhere without changing links on reboot:
+1. **Silent Background Execution**:
+   - Double-click `run_backend_silent.vbs` (or place a shortcut in `shell:startup` for automatic boot execution).
+2. **Visible Mode (with terminal logs)**:
+   - Double-click `run_ngrok_backend.bat`.
+3. **Stop Services**:
+   - Double-click `stop_backend.bat`.
+4. **App Connection**:
+   - In the app's Ingestion screen, tap the status badge to switch between **Cloudflare / Tunnel** and **Local Wi-Fi (10.0.9.179:8080)** with a single tap.
 
 ---
 
